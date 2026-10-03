@@ -1,0 +1,10 @@
+.DS_Store
+# PlatformIO / Arduino build output
+.pio/
+build/
+# Local Wi-Fi and device secrets. Never commit these.
+firmware/**/secrets.h
+firmware/**/.env
+# Slicer output (share STL/3MF, not machine gcode)
+*.gcode
+*.bgcode
