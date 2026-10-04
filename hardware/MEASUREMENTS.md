@@ -43,7 +43,14 @@ The lit area is not centered top to bottom: it sits about 2.5 mm away from the m
 
 - Hole-center positions: print the test-fit plate (`hardware/test-fit-plate.scad`) and check the screws line up before printing the full case.
 
-## Power button
+## Power slider (caliper)
+
+- Switch body 7.62 x 3.68 x 5.13 mm (0.300 x 0.145 x 0.202"), set 3.49 mm (0.1375") in from the USB-C edge.
+- Nub 1.5 mm (0.059") square; its tip is 7.07 mm (0.2785") from the board.
+- Travel not measured; the case slot allows the most the nub can move inside its body (6.1 mm).
+- Handled with a printed extender (`case/power-slider-extender.stl`). The button wiring below is no longer needed.
+
+## Power button (not used)
 
 - Push button (red + black wires, white cap) between header pin **IO29** and **GND**. Firmware: internal pull-up, press = backlight off + light sleep, press again = wake.
 - Header pins free for general use: IO29, IO30, IO31. Not free: IO26 (SPI clock), IO32 (resets the Wi-Fi chip), IO47/IO48 (shared with UART1 / wireless socket).

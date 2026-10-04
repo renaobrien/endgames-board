@@ -37,9 +37,18 @@ for x,y in holes:                       # M2.5 screw from below: clearance + hea
     cuts.append(cyl(C+x,C+y,-1,PCB_BOT+1,2.9))
     cuts.append(cyl(C+x,C+y,-1,2.6,5.2))
 z_conn=PCB_BOT-1.7                       # connectors hang under the PCB
-for y in (30.5,47.8):                    # USB-C UART0 (flash) and USB2.0, generous for cable boots
+for y in (47.8,):                        # only the lower USB-C (USB2.0, power). UART0 stays closed: it sits next to the power slider and is only needed for flashing, done with the case open
     cuts.append(box(-1,C+y-6.5,z_conn-4,WALL+1,C+y+6.5,z_conn+4))
-cuts.append(box(-1,C+17-5.5,z_conn-3.5,WALL+1,C+17+5.5,PCB_BOT+0.5))   # power switch
+# Power slider (caliper): body 7.62 x 3.68 x 5.13 mm, 3.49 mm in from the USB-C edge, nub 1.5 mm square,
+# nub tip 7.07 mm below the PCB. Slides along the edge. Extender clips on the nub, tab exits a wall slot.
+SW_Y=17.0                                  # switch center along the edge (from photo)
+SW_X=3.49+3.68/2                           # nub center from the board edge
+NUB_TIP=PCB_BOT-7.07
+SOCK_DEPTH=1.5
+EXT_Z0,EXT_Z1=NUB_TIP-1.0, NUB_TIP-1.0+2.4 # extender arm height band
+TRAVEL_MAX=7.62-1.5                        # most the nub can move inside its body
+EXT_W=4.0
+cuts.append(box(-1,C+SW_Y-(EXT_W+TRAVEL_MAX)/2-0.4,EXT_Z0-0.4,WALL+1,C+SW_Y+(EXT_W+TRAVEL_MAX)/2+0.4,EXT_Z1+0.4))   # power slider slot
 cuts.append(box(C+114.3-8,OY-WALL-1,z_conn-2.5,C+114.3+8,OY+1,PCB_BOT+0.5))  # microSD
 for y in (48,55):                        # BOOT / RESET access from the back
     cuts.append(cyl(C+127.1,C+y,-1,FLOOR+1,4.5))
@@ -63,3 +72,14 @@ RING=7.0
 test=D(tray, box(C+RING+4, C+RING, -1, C+L-RING-4, C+W-RING, FLOOR+0.01))
 print('test-fit tray', test.is_watertight, round(test.volume/1000,1), 'cm3 vs full', round(tray.volume/1000,1))
 test.export('test-fit-tray.stl')
+
+
+# ---------- power slider extender ----------
+# Printed with the socket opening facing up. Push the socket onto the nub; the tab sticks out the side of the case.
+arm_len=SW_X+CLR+WALL+2.5                  # nub center to 2.5 mm past the outside of the case
+ext=box(-arm_len,-EXT_W/2,0,2.0,EXT_W/2,1.6)                   # arm
+ext=U([ext,box(-2.0,-2.0,0,2.0,2.0,1.0+SOCK_DEPTH),            # socket block around the nub
+       box(-arm_len,-EXT_W/2,0,-arm_len+1.6,EXT_W/2,4.0)])     # grip ridge on the tab
+ext=D(ext,box(-0.85,-0.85,1.0,0.85,0.85,1.0+SOCK_DEPTH+1))     # 1.7 mm square socket for the 1.5 mm nub
+print('extender', ext.is_watertight, [round(v,1) for v in ext.extents])
+ext.export('power-slider-extender.stl')
