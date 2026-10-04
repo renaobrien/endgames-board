@@ -44,6 +44,30 @@ The template is a thin frame that checks the board lines up with the case before
 
 Do this with the board out of the case. The case keeps the flashing port covered.
 
+### Easiest: flash from the browser (no installs)
+
+1. Get the firmware file.
+   - Download `endgames-board-vX.Y.bin` from the repo's Releases page.
+2. Plug the board into your computer.
+   - Use the upper USB-C port, labeled UART0 (next to the power switch).
+   - Slide the power switch on.
+3. Open the web flasher in Chrome or Edge.
+   - Go to https://espressif.github.io/esptool-js/
+   - Safari won't work.
+4. Connect.
+   - Baudrate: 460800.
+   - Click Connect and pick the USB serial port that appears.
+   - The log should say ESP32-P4. Note the chip revision it prints.
+5. Flash.
+   - Flash Address: `0x0`.
+   - File: the `.bin` you downloaded.
+   - Click Program and wait for it to finish.
+6. Restart the board.
+   - Tap RESET on the back, or slide the power switch off and on.
+   - The screen should show the Wi-Fi setup screen.
+
+### From source
+
 1. Install ESP-IDF on your computer.
    - Follow Espressif's ESP-IDF install guide for your system.
 2. Plug the board into your computer.
@@ -52,6 +76,7 @@ Do this with the board out of the case. The case keeps the flashing port covered
    - In a terminal, from the `firmware` folder:
    - `idf.py set-target esp32p4`
    - `idf.py build flash monitor`
+   - To mount the screen upside down: `idf.py menuconfig`, then Endgames board, then Rotate 180.
 4. Watch the screen.
    - It should show the Wi-Fi setup screen.
 

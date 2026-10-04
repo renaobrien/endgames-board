@@ -8,3 +8,4 @@ firmware/**/.env
 # Slicer output (share STL/3MF, not machine gcode)
 *.gcode
 *.bgcode
+firmware/release/*.bin
