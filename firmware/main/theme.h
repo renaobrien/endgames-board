@@ -54,6 +54,7 @@
 #define EG_BOARD_EDGE EG_BOARD_SUNSET_EDGE
 #define EG_BOARD_SHADOW EG_BOARD_SUNSET_SHADOW
 
-/* Move highlights, same as the website board. */
-#define EG_LASTMOVE_FROM_LIGHT_ALPHA 82  /* rgba(255,46,177,0.32) on light squares */
-#define EG_LASTMOVE_TO_DARK_ALPHA 71     /* rgba(255,242,0,0.28) on dark squares */
+/* Last-move highlight, same as the website: pink tint (alpha 0-255), yellow ring on the destination. */
+#define EG_LASTMOVE_ALPHA_LIGHT 82   /* --lastmove-light 0.32 */
+#define EG_LASTMOVE_ALPHA_DARK 128   /* --lastmove-dark 0.50 */
+#define EG_LASTMOVE_RING EG_YELLOW

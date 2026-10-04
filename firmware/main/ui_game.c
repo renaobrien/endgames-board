@@ -11,8 +11,10 @@
 #include <stdlib.h>
 #include <string.h>
 
-#define SQ 60
-#define BOARD 480
+#define SQ 56
+#define BOARD (8 * SQ)        /* 448: leaves room for the cyan frame and pink offset shadow, like the website */
+#define BOARD_X 18
+#define BOARD_Y 18
 #define PANEL_W 320
 #define PAD 16
 
@@ -121,11 +123,14 @@ static void redraw_board(ui_t *u)
             lv_obj_set_style_bg_color(t, EG_MAGENTA, 0);
             lv_obj_set_style_bg_opa(t, LV_OPA_60, 0);
         } else if (idx == lf || idx == lt) {
-            lv_obj_set_style_bg_color(t, dark ? EG_YELLOW : EG_PINK, 0);
-            lv_obj_set_style_bg_opa(t, LV_OPA_30, 0);   /* web: 0.28 on dark, 0.32 on light */
+            lv_obj_set_style_bg_color(t, EG_PINK, 0);
+            lv_obj_set_style_bg_opa(t, dark ? EG_LASTMOVE_ALPHA_DARK : EG_LASTMOVE_ALPHA_LIGHT, 0);
         } else {
             lv_obj_set_style_bg_opa(t, LV_OPA_TRANSP, 0);
         }
+        /* destination gets a yellow ring (website: --lastmove-ring) */
+        lv_obj_set_style_border_width(t, (idx == lt && !(check && idx == king)) ? 3 : 0, 0);
+        lv_obj_set_style_border_color(t, EG_LASTMOVE_RING, 0);
 
         char c = u->g.board[idx];
         const void *src = c ? eg_piece_src(isupper((unsigned char)c) ? 'w' : 'b', (char)tolower((unsigned char)c)) : NULL;
@@ -233,11 +238,11 @@ static void open_promotion(lv_obj_t *screen, ui_t *u)
     u->promo = lv_obj_create(screen);
     plain(u->promo);
     lv_obj_set_size(u->promo, BOARD, BOARD);
-    lv_obj_set_pos(u->promo, 0, 0);
+    lv_obj_set_pos(u->promo, BOARD_X, BOARD_Y);
     lv_obj_set_style_bg_color(u->promo, EG_BG_VOID, 0);
     lv_obj_set_style_bg_opa(u->promo, LV_OPA_80, 0);
     lv_obj_t *title = mk_label(u->promo, &eg_bungee_28, EG_YELLOW, "PROMOTE TO");
-    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 90);
+    lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 80);
     static const char kinds[4] = {'q', 'r', 'b', 'n'};
     char col = u->g.you_white ? 'w' : 'b';
     for (int i = 0; i < 4; i++) {
@@ -372,11 +377,24 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
     lv_obj_set_style_bg_opa(scr, LV_OPA_COVER, 0);
     lv_obj_set_user_data(scr, u);
 
-    /* board */
+    /* board frame: pink offset shadow, cyan border (the website board) */
+    lv_obj_t *shadow = lv_obj_create(scr);
+    plain(shadow);
+    lv_obj_set_size(shadow, BOARD + 8, BOARD + 8);
+    lv_obj_set_pos(shadow, BOARD_X - 4 + 8, BOARD_Y - 4 + 8);
+    lv_obj_set_style_bg_color(shadow, EG_BOARD_SHADOW, 0);
+    lv_obj_set_style_bg_opa(shadow, LV_OPA_COVER, 0);
+    lv_obj_t *frame = lv_obj_create(scr);
+    plain(frame);
+    lv_obj_set_size(frame, BOARD + 8, BOARD + 8);
+    lv_obj_set_pos(frame, BOARD_X - 4, BOARD_Y - 4);
+    lv_obj_set_style_bg_color(frame, EG_BOARD_EDGE, 0);
+    lv_obj_set_style_bg_opa(frame, LV_OPA_COVER, 0);
+
     lv_obj_t *board = lv_obj_create(scr);
     plain(board);
     lv_obj_set_size(board, BOARD, BOARD);
-    lv_obj_set_pos(board, 0, 0);
+    lv_obj_set_pos(board, BOARD_X, BOARD_Y);
     for (int i = 0; i < 64; i++) {
         int sr = i / 8, sf = i % 8;
         lv_obj_t *c = lv_obj_create(board);
@@ -394,7 +412,7 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
         lv_obj_clear_flag(u->tint[i], LV_OBJ_FLAG_CLICKABLE);
 
         u->piece[i] = lv_image_create(c);
-        lv_obj_set_size(u->piece[i], SQ, SQ);
+        lv_image_set_scale(u->piece[i], 256 * SQ / 60);   /* piece PNGs are 60x60 */
         lv_obj_center(u->piece[i]);
         lv_obj_clear_flag(u->piece[i], LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_flag(u->piece[i], LV_OBJ_FLAG_HIDDEN);
@@ -428,22 +446,22 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
     lv_obj_t *panel = lv_obj_create(scr);
     plain(panel);
     lv_obj_set_size(panel, PANEL_W, 480);
-    lv_obj_set_pos(panel, BOARD, 0);
+    lv_obj_set_pos(panel, 480, 0);
     lv_obj_set_style_bg_color(panel, EG_BG_NIGHT, 0);
     lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
     lv_obj_t *edge = lv_obj_create(panel);          /* cyan edge, pink offset (the website's board frame) */
     plain(edge);
-    lv_obj_set_size(edge, 4, 480);
+    lv_obj_set_size(edge, 2, 480);
     lv_obj_set_style_bg_color(edge, EG_BOARD_EDGE, 0);
     lv_obj_set_style_bg_opa(edge, LV_OPA_COVER, 0);
     lv_obj_t *edge2 = lv_obj_create(panel);
     plain(edge2);
-    lv_obj_set_size(edge2, 4, 480);
-    lv_obj_set_pos(edge2, 4, 0);
+    lv_obj_set_size(edge2, 2, 480);
+    lv_obj_set_pos(edge2, 2, 0);
     lv_obj_set_style_bg_color(edge2, EG_BOARD_SHADOW, 0);
     lv_obj_set_style_bg_opa(edge2, LV_OPA_COVER, 0);
 
-    int cx = 8 + PAD;                         /* content x inside the panel */
+    int cx = 4 + PAD;                         /* content x inside the panel */
     int cw = PANEL_W - cx - PAD;              /* content width */
 
     /* opponent strip */

@@ -38,7 +38,7 @@ static void write_bmp(const char *path)
 
 static void nop_move(const char *a, const char *b, char p) { (void)a; (void)b; (void)p; }
 
-/* A mid-game position after 1.e4 e5 2.Nf3 Nc6 3.Bc4 Nf6 4.Ng5 d5 5.exd5 Nxd5 6.Nxf7, white to move... */
+/* /* A sample position after 1.e4 e5 2.Nf3 Nc6 3.Bc4 Nf6 4.Ng5 d5 5.exd5 Nxd5 6.Nxf7 */
 static void sample(eg_game_t *g)
 {
     memset(g, 0, sizeof *g);
