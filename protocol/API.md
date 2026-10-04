@@ -65,13 +65,15 @@ Optional query: `?gameId=uuid` to fetch a specific game (any status).
     "lastMove": { "from": "e2", "to": "e4", "san": "e4" },
     "moves": ["e4"],
     "legalMoves": [],
-    "opponent": { "name": "magnus_fan" },
+    "opponent": { "name": "magnus_fan", "isAi": false, "difficulty": null },
     "updatedAt": "2026-10-03T19:30:00Z"
   }
 }
 ```
 
 `moves` is every move so far in SAN, oldest first (up to 500), for the move list. There are no clock fields: Endgames games are untimed today. If clocks are added they arrive as new optional fields.
+
+`opponent.isAi` is true in games against the computer, with `difficulty` set (`beginner`, `intermediate`, `advanced`, `expert`; computer games started on the website before difficulty was stored read as `intermediate`). For people, `difficulty` is `null`.
 
 `game` is `null` when there is nothing to play. `status` is one of `IN_PROGRESS`, `WHITE_WON`, `BLACK_WON`, `DRAW`, `ABANDONED`.
 
@@ -147,7 +149,7 @@ One call for the home screen.
 }
 ```
 
-`games` holds your in-progress games (against people and the computer), your-turn first, then most recently updated, up to 20. `elo` is `null` and `ranked` false before the first ranked game.
+`games` holds your in-progress games (against people and the computer), your-turn first, then most recently updated, up to 20. You can have at most 20 in progress; `board-new-game` returns `429` above that. `sets` lists the built-in set plus sets you made. `elo` is `null` and `ranked` false before the first ranked game.
 
 ### Start a game: `POST /board-new-game`
 
@@ -165,7 +167,7 @@ Challenge a friend:
 { "mode": "challenge", "color": "random" }
 ```
 
-Creates an open challenge with your active set and returns:
+Creates an open challenge with your active set. `color` is the color you play (`random` picks one). Returns:
 
 ```json
 200 { "apiVersion": 1, "challenge": { "id": "uuid", "url": "https://endgam.es/?challenge=uuid", "expiresAt": "..." } }
@@ -183,7 +185,7 @@ The board shows `url` as a QR. When someone accepts, the game appears in `board-
 { "gameId": "uuid" }
 ```
 
-Returns the finished `game`.
+Returns the finished `game`. Resigning a game that's already over returns `409`.
 
 ### Switch piece set: `POST /board-set`
 
