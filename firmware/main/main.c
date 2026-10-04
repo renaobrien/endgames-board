@@ -36,10 +36,17 @@ static void show(lv_obj_t *s)
 
 /* ---------- UI callbacks (run in LVGL task) ---------- */
 
+/* Connect runs in the network task (it blocks up to 20 s); the UI only hands over the credentials. */
+static char want_ssid[33], want_pass[65];
+static volatile bool creds_pending;
+
 static void on_wifi_connect(const char *ssid, const char *pass)
 {
-    eg_store_save_wifi(ssid, pass);
-    esp_restart();                      /* simplest clean reconnect */
+    strncpy(want_ssid, ssid, sizeof want_ssid - 1);
+    want_ssid[sizeof want_ssid - 1] = 0;
+    strncpy(want_pass, pass, sizeof want_pass - 1);
+    want_pass[sizeof want_pass - 1] = 0;
+    creds_pending = true;
 }
 
 static void on_move(const char *from, const char *to, char promo)
@@ -123,9 +130,50 @@ static bool pair(void)
     }
 }
 
+static void wifi_error(const char *msg)
+{
+    lvgl_port_lock(0);
+    eg_wifi_set_error(scr_wifi, msg);
+    lvgl_port_unlock();
+}
+
+/* Try the typed credentials. Saves them only if they work. */
+static bool try_pending_creds(void)
+{
+    creds_pending = false;
+    if (eg_bsp_wifi_connect(want_ssid, want_pass, 20000)) {
+        eg_store_save_wifi(want_ssid, want_pass);
+        wifi_error(NULL);
+        return true;
+    }
+    wifi_error("Couldn't connect. Check the password.");
+    return false;
+}
+
+/* Saved network first; otherwise the Wi-Fi screen until a network works. */
+static void ensure_wifi(void)
+{
+    char ssid[33] = {0}, pass[65] = {0};
+#ifdef EG_DEV_WIFI_SSID
+    if (!eg_store_load_wifi(ssid, pass) && EG_DEV_WIFI_SSID[0]) { strcpy(ssid, EG_DEV_WIFI_SSID); strcpy(pass, EG_DEV_WIFI_PASS); }
+#else
+    eg_store_load_wifi(ssid, pass);
+#endif
+    if (ssid[0] && eg_bsp_wifi_connect(ssid, pass, 20000)) return;
+    show(scr_wifi);
+    request_scan();
+    if (ssid[0]) wifi_error("Couldn't reach your saved network. Pick one.");
+    for (;;) {
+        while (!creds_pending) vTaskDelay(pdMS_TO_TICKS(100));
+        if (try_pending_creds()) return;
+    }
+}
+
 static void net_task(void *arg)
 {
     (void)arg;
+    ensure_wifi();
+    eg_store_load_token(token);
     for (;;) {
         if (!token[0]) {
             while (!pair()) { /* expired: loop with a new code */ }
@@ -136,6 +184,10 @@ static void net_task(void *arg)
         int idle_ms = 0;
         for (;;) {
             if (want_wifi_screen) { want_wifi_screen = false; show(scr_wifi); request_scan(); }
+            if (creds_pending) {                         /* switched networks from the menu */
+                if (try_pending_creds()) show(have_game ? scr_game : scr_idle);
+                continue;
+            }
             if (mailbox.pending && have_game) {
                 mailbox.pending = false;
                 eg_game_t next;
@@ -158,7 +210,7 @@ static void net_task(void *arg)
             }
             for (int waited = 0; waited < idle_ms; waited += 250) {
                 vTaskDelay(pdMS_TO_TICKS(250));
-                if (mailbox.pending || want_wifi_screen) break;   /* react to taps quickly */
+                if (mailbox.pending || want_wifi_screen || creds_pending) break;   /* react to taps quickly */
             }
         }
         ESP_LOGW(TAG, "401: wiping token and re-pairing");
@@ -183,20 +235,5 @@ void app_main(void)
     scr_game = eg_game_create(NULL, &cb);
     lvgl_port_unlock();
     xTaskCreate(scan_task, "scan", 10 * 1024, NULL, 4, &scan_task_h);
-
-    char ssid[33] = {0}, pass[65] = {0};
-#ifdef EG_DEV_WIFI_SSID
-    if (!eg_store_load_wifi(ssid, pass) && EG_DEV_WIFI_SSID[0]) { strcpy(ssid, EG_DEV_WIFI_SSID); strcpy(pass, EG_DEV_WIFI_PASS); }
-#else
-    eg_store_load_wifi(ssid, pass);
-#endif
-    if (!ssid[0] || !eg_bsp_wifi_connect(ssid, pass, 20000)) {
-        show(scr_wifi);
-        request_scan();
-        if (ssid[0]) { lvgl_port_lock(0); eg_wifi_set_error(scr_wifi, "Could not connect. Check the name and password."); lvgl_port_unlock(); }
-        return;                         /* on_wifi_connect saves and restarts */
-    }
-
-    eg_store_load_token(token);
     xTaskCreate(net_task, "net", 12 * 1024, NULL, 5, NULL);
 }

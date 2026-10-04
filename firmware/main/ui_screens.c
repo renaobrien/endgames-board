@@ -4,6 +4,7 @@
 #include "pieces.h"
 #include "theme.h"
 #include <string.h>
+#include <stdio.h>
 
 static lv_obj_t *base(lv_obj_t *parent)
 {
@@ -361,7 +362,9 @@ void eg_wifi_set_networks(lv_obj_t *screen, const eg_ap_t *aps, int n)
 
 /* ---------- pairing ---------- */
 
-typedef struct { lv_obj_t *code, *url, *status; } pair_t;
+typedef struct { lv_obj_t *code, *qr, *status; } pair_t;
+
+#define EG_PAIR_URL "https://endgam.es/board/pair"
 
 lv_obj_t *eg_pair_create(lv_obj_t *parent)
 {
@@ -370,31 +373,50 @@ lv_obj_t *eg_pair_create(lv_obj_t *parent)
     memset(p, 0, sizeof *p);
     lv_obj_set_user_data(s, p);
 
+    /* left: QR on a white tile (phones need the light quiet zone) */
+    lv_obj_t *tile = lv_obj_create(s);
+    lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(tile, 300, 300);
+    lv_obj_set_pos(tile, 60, 90);
+    lv_obj_set_style_bg_color(tile, lv_color_white(), 0);
+    lv_obj_set_style_border_width(tile, 0, 0);
+    lv_obj_set_style_radius(tile, 16, 0);
+    lv_obj_set_style_pad_all(tile, 0, 0);
+    p->qr = lv_qrcode_create(tile);
+    lv_qrcode_set_size(p->qr, 260);
+    lv_qrcode_set_dark_color(p->qr, EG_BG_VOID);
+    lv_qrcode_set_light_color(p->qr, lv_color_white());
+    lv_qrcode_update(p->qr, EG_PAIR_URL, strlen(EG_PAIR_URL));
+    lv_obj_center(p->qr);
+
+    /* right: instructions and the typed fallback */
     lv_obj_t *t = label(s, &eg_bungee_28, EG_YELLOW, "PAIR THIS BOARD");
-    lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 40);
-    lv_obj_t *step = label(s, &eg_sora_20, EG_FG_HAZE, "Go to");
-    lv_obj_align(step, LV_ALIGN_TOP_MID, 0, 110);
-    p->url = label(s, &eg_sora_20_bold, EG_CYAN, "endgam.es/board/pair");
-    lv_obj_align(p->url, LV_ALIGN_TOP_MID, 0, 142);
-    lv_obj_t *step2 = label(s, &eg_sora_20, EG_FG_HAZE, "and type this code");
-    lv_obj_align(step2, LV_ALIGN_TOP_MID, 0, 178);
-
+    lv_obj_set_pos(t, 410, 90);
+    lv_obj_t *a1 = label(s, &eg_sora_20, EG_FG, "Scan with your phone.");
+    lv_obj_set_pos(a1, 410, 150);
+    lv_obj_t *a2 = label(s, &eg_sora_16, EG_FG_HAZE, "No camera? Go to");
+    lv_obj_set_pos(a2, 410, 206);
+    lv_obj_t *u = label(s, &eg_sora_20_bold, EG_CYAN, "endgam.es/board/pair");
+    lv_obj_set_pos(u, 410, 230);
+    lv_obj_t *a3 = label(s, &eg_sora_16, EG_FG_HAZE, "and enter");
+    lv_obj_set_pos(a3, 410, 262);
     p->code = label(s, &eg_bungee_44, EG_PINK, "------");
-    lv_obj_set_style_text_letter_space(p->code, 12, 0);
-    lv_obj_align(p->code, LV_ALIGN_CENTER, 0, 40);
-    lv_obj_set_style_text_font(p->code, &eg_vt323_56, 0);   /* big and readable across a room */
-    lv_obj_set_style_text_font(p->code, &eg_bungee_44, 0);
+    lv_obj_set_style_text_letter_space(p->code, 8, 0);
+    lv_obj_set_pos(p->code, 410, 288);
 
-    p->status = label(s, &eg_sora_16, EG_FG_MIST, "Waiting for you...");
-    lv_obj_align(p->status, LV_ALIGN_BOTTOM_MID, 0, -40);
+    p->status = label(s, &eg_sora_16, EG_FG_MIST, "");
+    lv_obj_set_pos(p->status, 410, 360);
     return s;
 }
 
 void eg_pair_set_code(lv_obj_t *screen, const char *code, const char *claim_url)
 {
+    (void)claim_url;                     /* the QR always carries the code, whatever the server sends */
     pair_t *p = lv_obj_get_user_data(screen);
     lv_label_set_text(p->code, code);
-    if (claim_url) lv_label_set_text(p->url, claim_url);
+    char url[96];
+    snprintf(url, sizeof url, EG_PAIR_URL "?code=%s", code);
+    lv_qrcode_update(p->qr, url, strlen(url));
 }
 
 void eg_pair_set_status(lv_obj_t *screen, const char *msg)

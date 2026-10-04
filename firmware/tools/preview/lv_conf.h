@@ -19,6 +19,7 @@
 
 #define LV_FONT_MONTSERRAT_14 1
 #define LV_FONT_MONTSERRAT_20 1
+#define LV_USE_QRCODE 1
 #define LV_FONT_DEFAULT &lv_font_montserrat_14
 
 #define LV_USE_FS_STDIO 1

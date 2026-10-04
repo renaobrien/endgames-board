@@ -31,6 +31,7 @@
 #include "esp_event.h"
 #include "esp_netif.h"
 #include "freertos/event_groups.h"
+#include "freertos/semphr.h"
 
 static const char *TAG = "eg_bsp";
 
@@ -142,7 +143,12 @@ lv_display_t *eg_bsp_init(void)
     if (power_init() != ESP_OK || i2c_init() != ESP_OK) return NULL;
     eg_bsp_backlight(0);                                  /* dark until the first frame is ready */
     if (panel_init() != ESP_OK) return NULL;
-    if (touch_init() != ESP_OK) ESP_LOGE(TAG, "touch init failed; continuing without touch");
+    /* GT911 sometimes NACKs right after a reset; give it a few tries */
+    for (int i = 0; i < 4 && touch_init() != ESP_OK; i++) {
+        ESP_LOGW(TAG, "touch init failed, retrying");
+        vTaskDelay(pdMS_TO_TICKS(250));
+    }
+    if (!s_touch) ESP_LOGE(TAG, "touch init failed; continuing without touch");
 
     lvgl_port_cfg_t port_cfg = ESP_LVGL_PORT_INIT_CONFIG();
     port_cfg.task_stack = 16 * 1024;
@@ -205,11 +211,13 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 }
 
 static bool s_wifi_inited, s_wifi_running;
+static SemaphoreHandle_t s_wifi_mtx;   /* scan and connect never overlap */
 
 static bool wifi_init_once(void)
 {
     if (s_wifi_inited) return true;
     s_wifi_ev = xEventGroupCreate();
+    s_wifi_mtx = xSemaphoreCreateMutex();
     ESP_ERROR_CHECK(esp_netif_init());
     ESP_ERROR_CHECK(esp_event_loop_create_default());
     esp_netif_create_default_wifi_sta();
@@ -227,9 +235,19 @@ static int ap_cmp(const void *a, const void *b)
     return ((const eg_ap_t *)b)->rssi - ((const eg_ap_t *)a)->rssi;
 }
 
+static int wifi_scan_locked(eg_ap_t *out, int max);
+
 int eg_bsp_wifi_scan(eg_ap_t *out, int max)
 {
     if (!wifi_init_once()) return 0;
+    xSemaphoreTake(s_wifi_mtx, portMAX_DELAY);
+    int n = wifi_scan_locked(out, max);
+    xSemaphoreGive(s_wifi_mtx);
+    return n;
+}
+
+static int wifi_scan_locked(eg_ap_t *out, int max)
+{
     if (!s_wifi_running) {
         if (esp_wifi_start() != ESP_OK) return 0;
         s_wifi_running = true;
@@ -266,9 +284,19 @@ int eg_bsp_wifi_scan(eg_ap_t *out, int max)
     return count;
 }
 
+static bool wifi_connect_locked(const char *ssid, const char *pass, int timeout_ms);
+
 bool eg_bsp_wifi_connect(const char *ssid, const char *pass, int timeout_ms)
 {
     if (!wifi_init_once()) return false;
+    xSemaphoreTake(s_wifi_mtx, portMAX_DELAY);
+    bool ok = wifi_connect_locked(ssid, pass, timeout_ms);
+    xSemaphoreGive(s_wifi_mtx);
+    return ok;
+}
+
+static bool wifi_connect_locked(const char *ssid, const char *pass, int timeout_ms)
+{
     if (s_wifi_running) { esp_wifi_stop(); s_wifi_running = false; }
     s_connecting = true;
     xEventGroupClearBits(s_wifi_ev, WIFI_GOT_IP | WIFI_FAILED);
