@@ -63,12 +63,15 @@ Optional query: `?gameId=uuid` to fetch a specific game (any status).
     "status": "IN_PROGRESS",
     "moveCount": 1,
     "lastMove": { "from": "e2", "to": "e4", "san": "e4" },
+    "moves": ["e4"],
     "legalMoves": [],
     "opponent": { "name": "magnus_fan" },
     "updatedAt": "2026-10-03T19:30:00Z"
   }
 }
 ```
+
+`moves` is every move so far in SAN, oldest first (up to 500), for the move list. There are no clock fields: Endgames games are untimed today. If clocks are added they arrive as new optional fields.
 
 `game` is `null` when there is nothing to play. `status` is one of `IN_PROGRESS`, `WHITE_WON`, `BLACK_WON`, `DRAW`, `ABANDONED`.
 
