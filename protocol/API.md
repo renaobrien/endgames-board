@@ -13,11 +13,11 @@ The board shows a code. The owner types it on endgam.es. The board then receives
 No auth, no body.
 
 ```json
-200 { "code": "K7XQ2M", "pollSecret": "egp_...", "expiresAt": "2026-10-03T20:00:00Z", "claimUrl": "https://endgam.es/board/pair" }
+200 { "code": "K7XQ2M", "pollSecret": "egp_...", "expiresAt": "2026-10-03T20:00:00Z", "claimUrl": "https://endgam.es/board/pair?code=K7XQ2M" }
 429 { "error": "Too many pairing attempts" }
 ```
 
-Show `code` and `claimUrl` on screen. Keep `pollSecret` private. Codes expire after 10 minutes.
+Show `code` as text and `claimUrl` as a QR code (and as text). The URL carries the code, so scanning it prefills the pairing page. Keep `pollSecret` private. Codes expire after 10 minutes.
 
 ### 2. Owner claims the code
 
