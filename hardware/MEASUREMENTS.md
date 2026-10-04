@@ -42,3 +42,11 @@ The lit area is not centered top to bottom: it sits about 2.5 mm away from the m
 
 
 - Hole-center positions: print the test-fit plate (`hardware/test-fit-plate.scad`) and check the screws line up before printing the full case.
+
+## Power button
+
+- Push button (red + black wires, white cap) between header pin **IO29** and **GND**. Firmware: internal pull-up, press = backlight off + light sleep, press again = wake.
+- Header pins free for general use: IO29, IO30, IO31. Not free: IO26 (SPI clock), IO32 (resets the Wi-Fi chip), IO47/IO48 (shared with UART1 / wireless socket).
+- Power slider stays ON permanently.
+- No-solder wiring: female Dupont jumper leads + Wago 221-412 lever connectors.
+- Source: espboards.dev pinout for the CrowPanel Advance 5.0 (ESP32-P4).
