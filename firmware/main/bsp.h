@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 #pragma once
+#include <stdbool.h>
+#include <stdint.h>
 #include "lvgl.h"
 
 /* Display + touch bring-up for the Elecrow CrowPanel Advanced 5" ESP32-P4 (800x480 RGB, GT911 touch)
@@ -8,3 +10,6 @@ lv_display_t *eg_bsp_init(void);
 
 /* Wi-Fi comes up through the onboard ESP32-C6 (ESP-Hosted). Blocks until connected or timeout_ms. */
 bool eg_bsp_wifi_connect(const char *ssid, const char *pass, int timeout_ms);
+
+/* Backlight brightness 0..100 (0 = screen dark). Used for sleep. */
+void eg_bsp_backlight(uint8_t percent);

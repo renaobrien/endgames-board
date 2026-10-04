@@ -1,6 +1,14 @@
 dependencies:
-  idf: ">=5.4"
+  idf: ">=5.5"
   lvgl/lvgl: "~9.2.2"
-  espressif/esp_lvgl_port: "^2.4.0"
-  espressif/esp_wifi_remote: "*"      # Wi-Fi through the onboard ESP32-C6 (ESP-Hosted)
-  espressif/esp_hosted: "*"
+  espressif/esp_lvgl_port: "~2.6.0"
+  espressif/esp_lcd_touch_gt911: "^1.1.3"
+  # Wi-Fi through the onboard ESP32-C6 (ESP-Hosted over SDIO). Same versions as Elecrow's Wi-Fi sample.
+  espressif/esp_hosted:
+    version: "^2.3.0"
+    rules:
+      - if: "target in [esp32p4]"
+  espressif/esp_wifi_remote:
+    version: "^0.16.1"
+    rules:
+      - if: "target in [esp32p4]"

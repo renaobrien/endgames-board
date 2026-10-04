@@ -2,7 +2,7 @@
 
 Runs on the Elecrow CrowPanel Advanced 5" ESP32-P4 (800x480, GT911 touch). ESP-IDF + LVGL 9. Wi-Fi comes through the onboard ESP32-C6 (ESP-Hosted).
 
-**Status:** the UI, API client, pairing flow and storage are written. The display, touch and Wi-Fi bring-up in `main/bsp.c` is not written yet because it needs the real board (start from Elecrow's sample). Nothing here has been compiled for the ESP32-P4 or run on hardware. The desktop preview renders the real UI code, which is what has been checked.
+**Status:** compiles for the ESP32-P4 with ESP-IDF v5.5.1 (verified 2026-10-04). `main/bsp.c` brings up the screen, touch, backlight and Wi-Fi using the pins and timings from Elecrow's published sources for this board. Not yet run on the real board.
 
 ## Layout
 
@@ -14,7 +14,7 @@ Runs on the Elecrow CrowPanel Advanced 5" ESP32-P4 (800x480, GT911 touch). ESP-I
 | `main/api.c` | Device API client (`../protocol/API.md`) |
 | `main/pieces_store.c` | Downloads the 12 piece PNGs from `board-pieces` into PSRAM |
 | `main/store.c` | Wi-Fi and device token in NVS |
-| `main/bsp.c` | Hardware bring-up. The only hardware-specific file. Not implemented |
+| `main/bsp.c` | Hardware bring-up: power rails, I2C, backlight MCU, 800x480 RGB panel, GT911 touch, Wi-Fi via the C6. The only hardware-specific file |
 | `main/theme.h` | Generated colors. Do not edit |
 | `main/fonts/` | Generated LVGL fonts (Sora, VT323, Bungee, all OFL) |
 | `tools/preview/` | Desktop renderer for the screens |
@@ -37,9 +37,11 @@ Needs cmake, a C compiler and git. Writes PNGs to `docs/screenshots/`. The 12 pi
 ## Build for the board
 
 ```
-. $IDF_PATH/export.sh
+. $IDF_PATH/export.sh          # ESP-IDF v5.5.x
 idf.py set-target esp32p4
-idf.py build flash monitor
+idf.py build flash monitor     # board plugged into the UART0 USB-C
 ```
+
+Versions that build: ESP-IDF v5.5.1, LVGL 9.2.2, esp_lvgl_port 2.6.x (newer esp_lvgl_port needs a newer IDF and LVGL).
 
 Never commit Wi-Fi passwords or the device token. `main/secrets.h` and `.env*` are gitignored.

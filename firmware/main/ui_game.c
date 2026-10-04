@@ -157,7 +157,7 @@ static void rebuild_moves(ui_t *u)
         lv_obj_t *row = lv_obj_create(u->list);
         plain(row);
         lv_obj_set_size(row, LV_PCT(100), 26);
-        char num[8];
+        char num[16];
         snprintf(num, sizeof num, "%d.", (u->g.moves_first_ply + i) / 2 + 1);
         lv_obj_t *a = mk_label(row, &eg_vt323_36, EG_FG_MIST, num);
         lv_obj_align(a, LV_ALIGN_LEFT_MID, 0, 0);

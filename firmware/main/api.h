@@ -2,6 +2,8 @@
 #pragma once
 #include "chess_pos.h"
 #include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 #define EG_API_BASE "https://endgam.es/.netlify/functions"
 
