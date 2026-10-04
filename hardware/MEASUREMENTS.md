@@ -5,7 +5,7 @@
 | What (Eagle) | Value |
 |---|---|
 | Board outline | 132.0 x 80.12 mm |
-| Corner holes | 3.2 mm drill (M3), centers 3.0 mm from the short edges, 2.82 mm from the UART1/I2C edge, 3.0 mm from the microSD edge |
+| Corner holes | 3.39 mm (M3). Caliper: 127.0 x 73.66 mm center to center, 3.33 mm from the UART1/I2C edge. (Eagle said 126.0 x 74.3, wrong) |
 | USB-C UART0 (J1) center | 31.6 mm from the UART1/I2C edge |
 | USB-C USB2.0 (J16) center | 48.6 mm from the UART1/I2C edge |
 | Power slider (SW1) center | 18.6 mm from the UART1/I2C edge, 4.8 mm in from the USB-C edge, footprint 9.2 x 3.6 mm |
