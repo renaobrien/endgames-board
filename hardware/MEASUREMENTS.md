@@ -38,10 +38,6 @@ Measured by hand with calipers (2026-10-04) unless marked otherwise. "Back view"
 
 The lit area is not centered top to bottom: it sits about 2.5 mm away from the microSD edge (toward the UART1/I2C edge). The case's front window follows the lit area, not the glass, or one edge shows a fat black strip.
 
-## Case layout notes
-
-- The microSD edge is the heavy edge: wide screen border on the front, tallest part (pin header) on the back. Put the case's chin and the deepest part of the shell there, so the board sits like a tilted tablet with the thick end down.
-
 ## Open
 
 
