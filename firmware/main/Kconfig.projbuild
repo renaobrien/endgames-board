@@ -1,0 +1,8 @@
+menu "Endgames board"
+    config EG_ROTATE_180
+        bool "Mount the screen upside down (rotate 180)"
+        default n
+        help
+            Default: power switch at the top-left as you look at the screen.
+            Turn this on if the board sits the other way up in the case.
+endmenu

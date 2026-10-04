@@ -159,8 +159,22 @@ lv_display_t *eg_bsp_init(void)
         .flags = {.buff_spiram = true, .swap_bytes = false, .full_refresh = false, .direct_mode = true},
     };
     lvgl_port_display_rgb_cfg_t rgb_cfg = {.flags = {.bb_mode = true, .avoid_tearing = true}};
+#if CONFIG_EG_ROTATE_180
+    /* Upside-down mount (power switch bottom-right). Direct mode can't rotate, so draw into
+       partial buffers and let the port rotate each chunk (PPA on the P4) before it hits the panel. */
+    disp_cfg.buffer_size = EG_H_RES * 80;
+    disp_cfg.double_buffer = true;
+    disp_cfg.flags.direct_mode = false;
+    disp_cfg.flags.sw_rotate = true;
+    rgb_cfg.flags.avoid_tearing = false;
+#endif
     s_disp = lvgl_port_add_disp_rgb(&disp_cfg, &rgb_cfg);
     if (!s_disp) { ESP_LOGE(TAG, "lvgl display add failed"); return NULL; }
+#if CONFIG_EG_ROTATE_180
+    lvgl_port_lock(0);
+    lv_display_set_rotation(s_disp, LV_DISPLAY_ROTATION_180);   /* LVGL rotates touch points to match */
+    lvgl_port_unlock();
+#endif
 
     if (s_touch) {
         lvgl_port_touch_cfg_t tcfg = {.disp = s_disp, .handle = s_touch};
