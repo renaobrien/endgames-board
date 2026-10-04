@@ -21,6 +21,12 @@ Measured by hand with calipers (2026-10-04) unless marked otherwise. "Back view"
 | Hole diameter | 2.5 mm (0.10"), fits M2.5 screws | Caliper |
 | Hole center from edges | about 3.5 mm from both edges | Estimated from photo. Confirm with the test-fit plate |
 
+## From the side photo of the USB-C edge
+
+- Order along that edge, from the 5V-in end: white UART3-IN connector, USB-C (USB2.0), USB-C (UART0), power slider.
+- USB-C shells sit about 1.8 mm off the board and overhang the edge about 1 mm. The case and template allow 1.6 mm on that side.
+- The white UART3-IN connector overhangs the edge about 5 mm. The case wall and template wall are open there.
+
 ## Things on the edges (back view, USB ports on the right)
 
 | Edge | Item | Case needs |
@@ -46,7 +52,7 @@ The lit area is not centered top to bottom: it sits about 2.5 mm away from the m
 ## Power slider (caliper)
 
 - Switch body 7.62 x 3.68 x 5.13 mm (0.300 x 0.145 x 0.202"), set 3.49 mm (0.1375") in from the USB-C edge.
-- Nub 1.5 mm (0.059") square; its tip is 7.07 mm (0.2785") from the board.
+- Nub 1.5 mm (0.059") square, pointing straight out from the back. Its tip is 5.1 mm (0.202") from the board (confirmed by side photo).
 - Travel not measured; the case slot allows the most the nub can move inside its body (6.1 mm).
 - Handled with a printed extender (`case/power-slider-extender.stl`). The button wiring below is no longer needed.
 

@@ -1,6 +1,6 @@
 # Case v0: flat brick
 
-Two printed parts and four screws. Outer size 135.8 x 85.0 x 22.2 mm.
+Two printed parts and four screws. Outer size 137.0 x 85.0 x 22.2 mm.
 
 | File | What | Print |
 |---|---|---|
