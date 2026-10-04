@@ -57,3 +57,9 @@ for name,m in (('case-tray',tray),('case-lid',lid)):
     print(name, m.is_watertight, [round(v,1) for v in m.extents])
     m.export(f'{name}.stl')
 print('outer', round(OX,1), round(OY,1), round(TOP,1), 'window', [round(v,1) for v in win], 'screw M2.5 x', round(FLOOR+ (PCB_BOT-FLOOR)+PCB_T+3,1))
+
+# ---------- test-fit tray: same walls, posts and openings, floor cut out to print fast ----------
+RING=7.0
+test=D(tray, box(C+RING+4, C+RING, -1, C+L-RING-4, C+W-RING, FLOOR+0.01))
+print('test-fit tray', test.is_watertight, round(test.volume/1000,1), 'cm3 vs full', round(tray.volume/1000,1))
+test.export('test-fit-tray.stl')
