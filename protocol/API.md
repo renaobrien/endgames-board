@@ -63,6 +63,7 @@ Optional query: `?gameId=uuid` to fetch a specific game (any status).
     "status": "IN_PROGRESS",
     "moveCount": 1,
     "lastMove": { "from": "e2", "to": "e4", "san": "e4" },
+    "legalMoves": [],
     "opponent": { "name": "magnus_fan" },
     "updatedAt": "2026-10-03T19:30:00Z"
   }
@@ -71,7 +72,9 @@ Optional query: `?gameId=uuid` to fetch a specific game (any status).
 
 `game` is `null` when there is nothing to play. `status` is one of `IN_PROGRESS`, `WHITE_WON`, `BLACK_WON`, `DRAW`, `ABANDONED`.
 
-Polling: every 10 seconds while waiting for the opponent, every 60 seconds when idle. E-ink panels need a full refresh now and then, so redraw only when `moveCount` or `status` changes.
+`legalMoves` lists your moves in UCI form (`e2e4`, `e7e8q`) when it's your turn, and is empty otherwise. Use it to highlight squares after a tap.
+
+Polling: every 10 seconds while waiting for the opponent, every 60 seconds when idle. Redraw only when `moveCount` or `status` changes.
 
 ### Make a move: `POST /board-move`
 
@@ -91,7 +94,7 @@ Add `"promotion": "q"` (`q`, `r`, `b`, or `n`) when a pawn reaches the last rank
 
 Every `409` and `422` includes the current `game`. Redraw from it.
 
-The server checks legality. The board doesn't have to, though highlighting legal squares makes it nicer to use.
+The server checks legality on every move. `legalMoves` is there so the board can show where a piece can go.
 
 ## Versioning
 

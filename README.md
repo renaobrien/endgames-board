@@ -1,6 +1,6 @@
 # Endgames Board
 
-An open-source e-ink chess board you can print and build at home. It plays your live games from [endgam.es](https://endgam.es) and shows your custom piece set on the screen.
+An open-source touchscreen chess board you can print and build at home. It plays your live games from [endgam.es](https://endgam.es) in full color, with your custom piece set on the board.
 
 > Status: early. The reference board is on order and the device API is built. The case, wiring and firmware land here as the first build comes together.
 
@@ -8,7 +8,7 @@ An open-source e-ink chess board you can print and build at home. It plays your 
 
 1. The board shows a 6-character pairing code.
 2. You enter the code at endgam.es/board/pair while signed in.
-3. The board picks up your current game, shows the position, and sends your moves.
+3. The board picks up your current game. Tap a piece, tap where it goes.
 
 Your opponent can be on the web, the app, or another board. Games against the in-app AI stay in the app.
 
