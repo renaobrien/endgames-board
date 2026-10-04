@@ -15,3 +15,7 @@ const void *eg_piece_src(char color, char type)
     }
     return paths[ci][(int)type];
 }
+
+/* Sets-tab previews: the sample pieces stand in for every set. */
+const void *eg_thumb_find(const char *url) { return url && url[0] ? eg_piece_src('w', url[1]) : 0; }
+const void *eg_thumb_load(const char *url) { return eg_thumb_find(url); }

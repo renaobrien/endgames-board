@@ -27,32 +27,71 @@ static esp_err_t on_event(esp_http_client_event_t *e)
     return ESP_OK;
 }
 
+/* One persistent HTTPS connection to the API host. A fresh TLS handshake costs about a second on this
+ * chip, so every call reuses it; on any transport error it is torn down and rebuilt on the next call.
+ * Only the network task calls into here, so no locking. */
+static esp_http_client_handle_t s_client;
+static body_t *s_body;                                /* where on_event writes the current response */
+
+static esp_err_t on_event_shared(esp_http_client_event_t *e)
+{
+    e->user_data = s_body;
+    return on_event(e);
+}
+
+static void client_reset(void)
+{
+    if (s_client) { esp_http_client_cleanup(s_client); s_client = NULL; }
+}
+
 /* Returns the HTTP status, or -1 on transport failure. *body is heap memory (free with heap_caps_free). */
 static int request(esp_http_client_method_t m, const char *path, const char *token, const char *json_body, char **body)
 {
     char url[256];
     snprintf(url, sizeof url, "%s/%s", EG_API_BASE, path);
     body_t b = {0};
-    esp_http_client_config_t cfg = {
-        .url = url, .method = m, .event_handler = on_event, .user_data = &b,
-        .crt_bundle_attach = esp_crt_bundle_attach, .timeout_ms = 15000,
-    };
-    esp_http_client_handle_t c = esp_http_client_init(&cfg);
-    if (token) {
-        char auth[128];
-        snprintf(auth, sizeof auth, "Bearer %s", token);
-        esp_http_client_set_header(c, "Authorization", auth);
+    s_body = &b;
+    for (int attempt = 0; attempt < 2; attempt++) {
+        if (!s_client) {
+            esp_http_client_config_t cfg = {
+                .url = url, .event_handler = on_event_shared,
+                .crt_bundle_attach = esp_crt_bundle_attach, .timeout_ms = 15000,
+                .keep_alive_enable = true,
+            };
+            s_client = esp_http_client_init(&cfg);
+            if (!s_client) break;
+        }
+        esp_http_client_set_url(s_client, url);
+        esp_http_client_set_method(s_client, m);
+        if (token) {
+            char auth[128];
+            snprintf(auth, sizeof auth, "Bearer %s", token);
+            esp_http_client_set_header(s_client, "Authorization", auth);
+        } else {
+            esp_http_client_delete_header(s_client, "Authorization");
+        }
+        if (json_body) {
+            esp_http_client_set_header(s_client, "Content-Type", "application/json");
+            esp_http_client_set_post_field(s_client, json_body, (int)strlen(json_body));
+        } else {
+            esp_http_client_delete_header(s_client, "Content-Type");
+            esp_http_client_set_post_field(s_client, NULL, 0);
+        }
+        esp_err_t err = esp_http_client_perform(s_client);
+        if (err == ESP_OK) {
+            int status = esp_http_client_get_status_code(s_client);
+            *body = b.buf;
+            s_body = NULL;
+            return status;
+        }
+        ESP_LOGW(TAG, "%s failed: %s (attempt %d)", path, esp_err_to_name(err), attempt + 1);
+        heap_caps_free(b.buf);
+        b = (body_t){0};
+        client_reset();                                /* stale keep-alive socket: reconnect once */
     }
-    if (json_body) {
-        esp_http_client_set_header(c, "Content-Type", "application/json");
-        esp_http_client_set_post_field(c, json_body, (int)strlen(json_body));
-    }
-    esp_err_t err = esp_http_client_perform(c);
-    int status = err == ESP_OK ? esp_http_client_get_status_code(c) : -1;
-    if (err != ESP_OK) ESP_LOGW(TAG, "%s failed: %s", path, esp_err_to_name(err));
-    esp_http_client_cleanup(c);
-    *body = b.buf;
-    return status;
+    s_body = NULL;
+    *body = NULL;
+    return -1;
 }
 
 static void copy_str(char *dst, size_t n, const cJSON *j)
@@ -83,6 +122,8 @@ static bool parse_game(const cJSON *game, eg_game_t *g)
     }
     const cJSON *opp = cJSON_GetObjectItem(game, "opponent");
     copy_str(g->opponent, sizeof g->opponent, cJSON_GetObjectItem(opp, "name"));
+    g->opp_ai = cJSON_IsTrue(cJSON_GetObjectItem(opp, "isAi"));
+    copy_str(g->opp_difficulty, sizeof g->opp_difficulty, cJSON_GetObjectItem(opp, "difficulty"));
     const cJSON *legal = cJSON_GetObjectItem(game, "legalMoves");
     cJSON *it;
     cJSON_ArrayForEach(it, legal) {
@@ -253,6 +294,9 @@ eg_result_t eg_api_home(const char *token, eg_home_t *out)
             eg_set_t *e = &out->sets[out->n_sets];
             copy_str(e->id, sizeof e->id, cJSON_GetObjectItem(st2, "id"));
             copy_str(e->name, sizeof e->name, cJSON_GetObjectItem(st2, "name"));
+            const cJSON *pv = cJSON_GetObjectItem(st2, "preview");
+            copy_str(e->preview_k, sizeof e->preview_k, cJSON_GetObjectItem(pv, "wk"));
+            copy_str(e->preview_n, sizeof e->preview_n, cJSON_GetObjectItem(pv, "wn"));
             if (e->id[0]) out->n_sets++;
         }
         r = EG_OK;
@@ -316,6 +360,37 @@ eg_result_t eg_api_set(const char *token, const char *set_id)
     int st = request(HTTP_METHOD_POST, "board-set", token, req, &body);
     heap_caps_free(body);
     return st == 200 ? EG_OK : st == 401 ? EG_UNAUTHORIZED : EG_ERROR;
+}
+
+eg_result_t eg_api_leaderboard(const char *token, eg_rank_t *out)
+{
+    memset(out, 0, sizeof *out);
+    out->you_rank = out->you_elo = -1;
+    char *body = NULL;
+    int st = request(HTTP_METHOD_GET, "board-leaderboard", token, NULL, &body);
+    eg_result_t r = EG_ERROR;
+    if (st == 401) r = EG_UNAUTHORIZED;
+    else if (st == 200 && body) {
+        cJSON *j = cJSON_Parse(body);
+        const cJSON *e;
+        cJSON_ArrayForEach(e, cJSON_GetObjectItem(j, "entries")) {
+            if (out->n >= EG_RANK_MAX) break;
+            const cJSON *rk = cJSON_GetObjectItem(e, "rank"), *el = cJSON_GetObjectItem(e, "elo");
+            out->rows[out->n].rank = cJSON_IsNumber(rk) ? rk->valueint : out->n + 1;
+            out->rows[out->n].elo = cJSON_IsNumber(el) ? el->valueint : 0;
+            copy_str(out->rows[out->n].name, sizeof out->rows[0].name, cJSON_GetObjectItem(e, "name"));
+            out->rows[out->n].you = cJSON_IsTrue(cJSON_GetObjectItem(e, "isYou"));
+            out->n++;
+        }
+        const cJSON *you = cJSON_GetObjectItem(j, "you");
+        const cJSON *yr = cJSON_GetObjectItem(you, "rank"), *ye = cJSON_GetObjectItem(you, "elo");
+        if (cJSON_IsNumber(yr)) out->you_rank = yr->valueint;
+        if (cJSON_IsNumber(ye)) out->you_elo = ye->valueint;
+        r = EG_OK;
+        cJSON_Delete(j);
+    }
+    heap_caps_free(body);
+    return r;
 }
 
 void *eg_http_download(const char *url, size_t *len)

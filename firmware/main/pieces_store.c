@@ -8,7 +8,7 @@
 #include <string.h>
 
 static const char *TAG = "eg_pieces";
-static lv_image_dsc_t dsc[12];     /* color*6 + type; RAW PNG data, decoded by LVGL's lodepng decoder */
+static lv_image_dsc_t dsc[12];     /* color*6 + type; ARGB8888 at EG_PIECE_PX, decoded once at download */
 static void *data[12];
 static char current_set[48];
 
@@ -27,6 +27,38 @@ const void *eg_piece_src(char color, char type)
     return dsc[i].data ? &dsc[i] : NULL;
 }
 
+#include "libs/lodepng/lodepng.h"
+#include <stdlib.h>
+
+/* PNG -> ARGB8888 (LVGL byte order B,G,R,A) resized to EG_PIECE_PX with an alpha-weighted box filter.
+ * Decoding once here keeps every board redraw a plain copy. Returns PSRAM memory or NULL. */
+static uint8_t *decode_scaled(const void *png, size_t len)
+{
+    unsigned char *rgba = NULL;
+    unsigned w = 0, h = 0;
+    if (lodepng_decode32(&rgba, &w, &h, png, len) != 0 || !rgba || !w || !h) { free(rgba); return NULL; }
+    const int N = EG_PIECE_PX;
+    uint8_t *out = heap_caps_malloc(N * N * 4, MALLOC_CAP_SPIRAM);
+    if (!out) { free(rgba); return NULL; }
+    for (int y = 0; y < N; y++) {
+        unsigned y0 = y * h / N, y1 = (y + 1) * h / N; if (y1 <= y0) y1 = y0 + 1;
+        for (int x = 0; x < N; x++) {
+            unsigned x0 = x * w / N, x1 = (x + 1) * w / N; if (x1 <= x0) x1 = x0 + 1;
+            uint32_t r = 0, g = 0, b = 0, a = 0, n = 0;
+            for (unsigned sy = y0; sy < y1 && sy < h; sy++)
+                for (unsigned sx = x0; sx < x1 && sx < w; sx++) {
+                    const unsigned char *p = rgba + (sy * w + sx) * 4;
+                    r += p[0] * p[3]; g += p[1] * p[3]; b += p[2] * p[3]; a += p[3]; n++;
+                }
+            uint8_t *o = out + (y * N + x) * 4;
+            if (a) { o[0] = b / a; o[1] = g / a; o[2] = r / a; } else { o[0] = o[1] = o[2] = 0; }
+            o[3] = n ? a / n : 0;
+        }
+    }
+    free(rgba);
+    return out;
+}
+
 bool eg_pieces_load(const char *token, bool *changed)
 {
     char set_id[48] = {0};
@@ -36,9 +68,11 @@ bool eg_pieces_load(const char *token, bool *changed)
     if (strcmp(set_id, current_set) == 0 && dsc[0].data) return true;
 
     void *fresh[12] = {0};
-    size_t len[12] = {0};
     for (int i = 0; i < 12; i++) {
-        fresh[i] = eg_http_download(urls[i], &len[i]);
+        size_t len = 0;
+        void *png = eg_http_download(urls[i], &len);
+        fresh[i] = png ? decode_scaled(png, len) : NULL;
+        heap_caps_free(png);
         if (!fresh[i]) {
             ESP_LOGW(TAG, "piece %d failed", i);
             for (int j = 0; j < i; j++) heap_caps_free(fresh[j]);
@@ -51,11 +85,48 @@ bool eg_pieces_load(const char *token, bool *changed)
         data[i] = fresh[i];
         memset(&dsc[i], 0, sizeof dsc[i]);
         dsc[i].header.magic = LV_IMAGE_HEADER_MAGIC;
-        dsc[i].header.cf = LV_COLOR_FORMAT_RAW;
+        dsc[i].header.cf = LV_COLOR_FORMAT_ARGB8888;
+        dsc[i].header.w = EG_PIECE_PX;
+        dsc[i].header.h = EG_PIECE_PX;
+        dsc[i].header.stride = EG_PIECE_PX * 4;
         dsc[i].data = data[i];
-        dsc[i].data_size = len[i];
+        dsc[i].data_size = EG_PIECE_PX * EG_PIECE_PX * 4;
     }
     snprintf(current_set, sizeof current_set, "%s", set_id);
     *changed = true;
     return true;
+}
+
+/* ---------- set preview thumbnails (Sets tab) ---------- */
+
+#define THUMB_MAX 40
+static struct { char url[160]; lv_image_dsc_t dsc; } thumbs[THUMB_MAX];
+static int thumbs_n;
+
+const void *eg_thumb_find(const char *url)
+{
+    if (!url || !url[0]) return NULL;
+    for (int i = 0; i < thumbs_n; i++) if (strcmp(thumbs[i].url, url) == 0) return &thumbs[i].dsc;
+    return NULL;
+}
+
+const void *eg_thumb_load(const char *url)
+{
+    const void *have = eg_thumb_find(url);
+    if (have || !url || !url[0] || thumbs_n >= THUMB_MAX) return have;
+    size_t len = 0;
+    void *png = eg_http_download(url, &len);
+    uint8_t *px = png ? decode_scaled(png, len) : NULL;
+    heap_caps_free(png);
+    if (!px) return NULL;
+    lv_image_dsc_t *d = &thumbs[thumbs_n].dsc;
+    memset(d, 0, sizeof *d);
+    d->header.magic = LV_IMAGE_HEADER_MAGIC;
+    d->header.cf = LV_COLOR_FORMAT_ARGB8888;
+    d->header.w = d->header.h = EG_PIECE_PX;
+    d->header.stride = EG_PIECE_PX * 4;
+    d->data = px;
+    d->data_size = EG_PIECE_PX * EG_PIECE_PX * 4;
+    snprintf(thumbs[thumbs_n].url, sizeof thumbs[0].url, "%s", url);
+    return &thumbs[thumbs_n++].dsc;
 }

@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: MIT */
-/* Game screen: 480x480 board on the left (60 px squares), 320 px panel on the right.
+/* Game screen: board on the left (56 px squares), slim 320 px panel on the right: opponent strip,
+ * status, your strip, Moves (slide-out history) and Menu (Home, Resign).
  * Looks like the website's v2 game screen: sunset palette, pink/yellow last-move tint,
  * magenta check glow, mint legal-move dots, cyan edge. */
 #include "ui_game.h"
 #include "fonts.h"
 #include "pieces.h"
 #include "theme.h"
+#include "ui_screens.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -26,9 +28,10 @@ typedef struct {
     char pending_from[3], pending_to[3];
     /* Everything per-square is indexed by screen cell (row*8+col). */
     lv_obj_t *cells[64], *tint[64], *piece[64], *mark[64];
-    lv_obj_t *opp_name, *opp_clock, *you_name, *you_clock, *status, *list;
-    lv_obj_t *btn_resign, *btn_flip, *btn_menu;
-    lv_obj_t *promo, *menu;
+    lv_obj_t *opp_name, *opp_sub, *opp_caps, *you_name, *you_caps, *status, *last;
+    lv_obj_t *btn_moves, *btn_menu;
+    lv_obj_t *promo, *menu, *drawer, *drawer_list;
+    bool sent;               /* our move is on its way; board already shows it */
 } ui_t;
 
 static ui_t *U(lv_obj_t *screen) { return (ui_t *)lv_obj_get_user_data(screen); }
@@ -61,11 +64,6 @@ static void plain(lv_obj_t *o)
     lv_obj_clear_flag(o, LV_OBJ_FLAG_SCROLLABLE);
 }
 
-static void fmt_clock(char *out, size_t n, int s)
-{
-    if (s < 0) snprintf(out, n, "--:--");
-    else snprintf(out, n, "%d:%02d", s / 60, s % 60);
-}
 
 /* ---------- board ---------- */
 
@@ -146,67 +144,122 @@ static void redraw_board(ui_t *u)
 
 /* ---------- panel ---------- */
 
+static const char CAP_ORDER[5] = {'q', 'r', 'b', 'n', 'p'};
+static const int CAP_START[5] = {1, 2, 2, 2, 8};
+static const int CAP_VALUE[5] = {9, 5, 3, 3, 1};
+
+/* Pieces of `color` ('w'/'b') missing from the board, i.e. captured by the other side. Returns material value. */
+static int missing(const eg_game_t *g, char color, int out[5])
+{
+    int have[5] = {0};
+    for (int i = 0; i < 64; i++) {
+        char c = g->board[i];
+        if (!c || (isupper((unsigned char)c) ? 'w' : 'b') != color) continue;
+        const char *p = strchr("qrbnp", tolower((unsigned char)c));
+        if (p) have[p - "qrbnp"]++;
+    }
+    int value = 0;
+    for (int k = 0; k < 5; k++) {
+        out[k] = CAP_START[k] - have[k];
+        if (out[k] < 0) out[k] = 0;            /* promotions */
+        value += out[k] * CAP_VALUE[k];
+    }
+    return value;
+}
+
+/* Row of small icons for the pieces this side has taken, plus +N if ahead on material. */
+static void draw_caps(lv_obj_t *row, const int taken[5], char taken_color, int lead)
+{
+    lv_obj_clean(row);
+    int x = 0;
+    for (int k = 0; k < 5; k++) {
+        for (int n = 0; n < taken[k]; n++) {
+            const void *src = eg_piece_src(taken_color, CAP_ORDER[k]);
+            if (!src) continue;
+            lv_obj_t *im = lv_image_create(row);
+            lv_image_set_src(im, src);
+            lv_image_set_pivot(im, 0, 0);
+            lv_image_set_scale(im, 256 * 26 / EG_PIECE_PX);
+            lv_obj_set_pos(im, x, 0);
+            x += 15;
+        }
+        if (taken[k]) x += 6;
+    }
+    if (lead > 0) {
+        lv_obj_t *l = mk_label(row, &eg_sora_16, EG_FG_HAZE, "");
+        lv_label_set_text_fmt(l, "+%d", lead);
+        lv_obj_set_pos(l, x + 18, 4);
+    }
+}
+
 static void rebuild_moves(ui_t *u)
 {
-    lv_obj_clean(u->list);
+    if (!u->drawer_list) return;
+    lv_obj_clean(u->drawer_list);
     int n = u->g.moves_n;
-    int start = n > 60 ? n - 60 : 0;
-    if (start % 2) start--;                   /* begin on a white move */
+    if (n == 0) {
+        mk_label(u->drawer_list, &eg_sora_16, EG_FG_MIST, "No moves yet.");
+        return;
+    }
+    int start = n > 120 ? n - 120 : 0;
+    if (start % 2) start--;
     if (start < 0) start = 0;
     for (int i = start; i < n; i += 2) {
-        lv_obj_t *row = lv_obj_create(u->list);
+        lv_obj_t *row = lv_obj_create(u->drawer_list);
         plain(row);
-        lv_obj_set_size(row, LV_PCT(100), 26);
+        lv_obj_set_size(row, LV_PCT(100), 30);
         char num[16];
         snprintf(num, sizeof num, "%d.", (u->g.moves_first_ply + i) / 2 + 1);
-        lv_obj_t *a = mk_label(row, &eg_vt323_36, EG_FG_MIST, num);
-        lv_obj_align(a, LV_ALIGN_LEFT_MID, 0, 0);
-        lv_obj_t *w = mk_label(row, &eg_sora_16, i == n - 1 ? EG_YELLOW : EG_FG, u->g.moves[i]);
-        lv_obj_align(w, LV_ALIGN_LEFT_MID, 44, 0);
-        if (i + 1 < n) {
-            lv_obj_t *b = mk_label(row, &eg_sora_16, i + 1 == n - 1 ? EG_YELLOW : EG_FG, u->g.moves[i + 1]);
-            lv_obj_align(b, LV_ALIGN_LEFT_MID, 150, 0);
-        }
+        lv_obj_align(mk_label(row, &eg_sora_16, EG_FG_MIST, num), LV_ALIGN_LEFT_MID, 0, 0);
+        lv_obj_align(mk_label(row, &eg_sora_20, i == n - 1 ? EG_YELLOW : EG_FG, u->g.moves[i]), LV_ALIGN_LEFT_MID, 48, 0);
+        if (i + 1 < n)
+            lv_obj_align(mk_label(row, &eg_sora_20, i + 1 == n - 1 ? EG_YELLOW : EG_FG, u->g.moves[i + 1]), LV_ALIGN_LEFT_MID, 150, 0);
     }
-    lv_obj_scroll_to_y(u->list, LV_COORD_MAX, LV_ANIM_OFF);
+    lv_obj_scroll_to_y(u->drawer_list, LV_COORD_MAX, LV_ANIM_OFF);
 }
 
 static void set_status(ui_t *u)
 {
-    char buf[64];
+    const char *txt;
     lv_color_t col = EG_FG_HAZE;
     if (!u->g.in_progress) {
-        if (strcmp(u->g.status, "DRAW") == 0) snprintf(buf, sizeof buf, "Draw");
-        else if (strcmp(u->g.status, "ABANDONED") == 0) snprintf(buf, sizeof buf, "Game abandoned");
+        if (strcmp(u->g.status, "DRAW") == 0) txt = "Draw";
+        else if (strcmp(u->g.status, "ABANDONED") == 0) txt = "Game abandoned";
         else {
-            bool white_won = strcmp(u->g.status, "WHITE_WON") == 0;
-            bool you_won = white_won == u->g.you_white;
-            snprintf(buf, sizeof buf, you_won ? "You won" : "You lost");
+            bool you_won = (strcmp(u->g.status, "WHITE_WON") == 0) == u->g.you_white;
+            txt = you_won ? "You won" : "You lost";
             col = you_won ? EG_MINT : EG_MAGENTA;
         }
-    } else if (u->g.your_turn) {
-        snprintf(buf, sizeof buf, "Your move");
+    } else if (u->g.your_turn && !u->sent) {
+        txt = "Your move";
         col = EG_CYAN;
+    } else if (u->g.opp_ai) {
+        txt = "Thinking...";
     } else {
-        snprintf(buf, sizeof buf, "Waiting for %.20s", u->g.opponent);
+        txt = u->sent ? "Sending..." : "Their move";
     }
-    lv_label_set_text(u->status, buf);
+    lv_label_set_text(u->status, txt);
     lv_obj_set_style_text_color(u->status, col, 0);
 }
 
 static void redraw_panel(ui_t *u)
 {
-    char buf[16];
-    lv_label_set_text(u->opp_name, u->g.opponent);
+    lv_label_set_text(u->opp_name, u->g.opponent[0] ? u->g.opponent : "Opponent");
+    if (u->g.opp_ai) lv_label_set_text_fmt(u->opp_sub, "Computer  ·  %s", eg_difficulty_label(u->g.opp_difficulty[0] ? u->g.opp_difficulty : "intermediate"));
+    else lv_label_set_text(u->opp_sub, u->g.you_white ? "Playing black" : "Playing white");
     lv_label_set_text(u->you_name, "You");
-    fmt_clock(buf, sizeof buf, u->g.clock_opp_s);
-    lv_label_set_text(u->opp_clock, buf);
-    fmt_clock(buf, sizeof buf, u->g.clock_you_s);
-    lv_label_set_text(u->you_clock, buf);
+
+    char you = u->g.you_white ? 'w' : 'b', opp = u->g.you_white ? 'b' : 'w';
+    int lost_you[5], lost_opp[5];
+    int v_you_lost = missing(&u->g, you, lost_you);
+    int v_opp_lost = missing(&u->g, opp, lost_opp);
+    draw_caps(u->you_caps, lost_opp, opp, v_opp_lost - v_you_lost);   /* what you took */
+    draw_caps(u->opp_caps, lost_you, you, v_you_lost - v_opp_lost);   /* what they took */
+
     set_status(u);
+    if (u->g.moves_n) lv_label_set_text_fmt(u->last, "Last move  %s", u->g.moves[u->g.moves_n - 1]);
+    else lv_label_set_text(u->last, "");
     rebuild_moves(u);
-    if (u->g.in_progress) lv_obj_clear_state(u->btn_resign, LV_STATE_DISABLED);
-    else lv_obj_add_state(u->btn_resign, LV_STATE_DISABLED);
 }
 
 /* ---------- input ---------- */
@@ -216,13 +269,38 @@ static void close_overlay(lv_obj_t **o)
     if (*o) { lv_obj_delete(*o); *o = NULL; }
 }
 
-static void send_move(ui_t *u, char promo)
+/* Show our move right away; the server's answer replaces this when it arrives. */
+static void apply_local(ui_t *u, const char *from, const char *to, char promo)
 {
-    if (u->cb.on_move) u->cb.on_move(u->pending_from, u->pending_to, promo);
-    u->selected = -1;
-    show_targets(u);
+    int f = eg_sq_index(from), t = eg_sq_index(to);
+    if (f < 0 || t < 0) return;
+    char pc = u->g.board[f];
+    char lower = (char)tolower((unsigned char)pc);
+    bool white = isupper((unsigned char)pc);
+    if (lower == 'p' && f % 8 != t % 8 && !u->g.board[t]) u->g.board[(f / 8) * 8 + t % 8] = 0;   /* en passant */
+    if (lower == 'k' && abs(f % 8 - t % 8) == 2) {                                                    /* castling: move the rook */
+        int row = f / 8;
+        bool king_side = t % 8 > f % 8;
+        int rf = row * 8 + (king_side ? 7 : 0), rt = row * 8 + (king_side ? 5 : 3);
+        u->g.board[rt] = u->g.board[rf];
+        u->g.board[rf] = 0;
+    }
+    u->g.board[t] = promo ? (char)(white ? toupper((unsigned char)promo) : promo) : pc;
+    u->g.board[f] = 0;
+    memcpy(u->g.last_from, from, 3);
+    memcpy(u->g.last_to, to, 3);
+    u->g.legal_n = 0;
 }
 
+static void send_move(ui_t *u, char promo)
+{
+    u->selected = -1;
+    apply_local(u, u->pending_from, u->pending_to, promo);
+    u->sent = true;
+    redraw_board(u);
+    redraw_panel(u);
+    if (u->cb.on_move) u->cb.on_move(u->pending_from, u->pending_to, promo);
+}
 static void promo_cb(lv_event_t *e)
 {
     lv_obj_t *screen = lv_event_get_user_data(e);
@@ -260,7 +338,7 @@ static void open_promotion(lv_obj_t *screen, ui_t *u)
         if (src) {
             lv_obj_t *im = lv_image_create(b);
             lv_image_set_src(im, src);
-            lv_image_set_scale(im, 256 * 80 / 60);
+            lv_image_set_scale(im, 256 * 80 / EG_PIECE_PX);
             lv_obj_center(im);
         }
         lv_obj_add_event_cb(b, promo_cb, LV_EVENT_CLICKED, screen);
@@ -273,7 +351,7 @@ static void cell_cb(lv_event_t *e)
     ui_t *u = U(screen);
     int cell = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e));
     int sq = cell_of(u, cell);
-    if (!u->g.your_turn || !u->g.in_progress || u->promo) return;
+    if (!u->g.your_turn || !u->g.in_progress || u->promo || u->sent) return;
 
     if (u->selected >= 0) {
         char from[3], to[3];
@@ -293,50 +371,30 @@ static void cell_cb(lv_event_t *e)
     show_targets(u);
 }
 
-static void flip_cb(lv_event_t *e)
-{
-    lv_obj_t *screen = lv_event_get_user_data(e);
-    ui_t *u = U(screen);
-    u->flipped = !u->flipped;
-    u->selected = -1;
-    redraw_board(u);
-}
+/* ---------- Menu: Home, Resign (two taps), Close ---------- */
 
-/* Resign needs a second tap within 3 s, so a stray touch can't end the game. */
 static uint32_t resign_armed_at;
-static void resign_restore(lv_timer_t *t)
-{
-    lv_obj_t *btn = lv_timer_get_user_data(t);
-    lv_label_set_text(lv_obj_get_child(btn, 0), "Resign");
-    resign_armed_at = 0;
-}
-
-static void resign_cb(lv_event_t *e)
-{
-    ui_t *u = U(lv_event_get_user_data(e));
-    lv_obj_t *btn = lv_event_get_current_target(e);
-    uint32_t now = lv_tick_get();
-    if (resign_armed_at && now - resign_armed_at < 3000) {
-        resign_armed_at = 0;
-        lv_label_set_text(lv_obj_get_child(btn, 0), "Resign");
-        if (u->cb.on_resign) u->cb.on_resign();
-        return;
-    }
-    resign_armed_at = now;
-    lv_label_set_text(lv_obj_get_child(btn, 0), "Tap again");
-    lv_timer_t *t = lv_timer_create(resign_restore, 3000, btn);
-    lv_timer_set_repeat_count(t, 1);
-}
 
 static void menu_item_cb(lv_event_t *e)
 {
     lv_obj_t *screen = lv_event_get_user_data(e);
     ui_t *u = U(screen);
-    int which = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e));
+    lv_obj_t *item = lv_event_get_current_target(e);
+    int which = (int)(intptr_t)lv_obj_get_user_data(item);
+    if (which == 1) {                                   /* Resign: second tap within 3 s confirms */
+        uint32_t now = lv_tick_get();
+        if (!resign_armed_at || now - resign_armed_at > 3000) {
+            resign_armed_at = now;
+            lv_label_set_text(lv_obj_get_child(item, 0), "Tap again to resign");
+            return;
+        }
+        resign_armed_at = 0;
+        close_overlay(&u->menu);
+        if (u->cb.on_resign) u->cb.on_resign();
+        return;
+    }
     close_overlay(&u->menu);
     if (which == 0 && u->cb.on_menu_home) u->cb.on_menu_home();
-    if (which == 1 && u->cb.on_menu_wifi) u->cb.on_menu_wifi();
-    if (which == 2 && u->cb.on_menu_forget) u->cb.on_menu_forget();
 }
 
 static void menu_cb(lv_event_t *e)
@@ -344,26 +402,101 @@ static void menu_cb(lv_event_t *e)
     lv_obj_t *screen = lv_event_get_user_data(e);
     ui_t *u = U(screen);
     if (u->menu) { close_overlay(&u->menu); return; }
+    resign_armed_at = 0;
     u->menu = lv_obj_create(screen);
     plain(u->menu);
-    lv_obj_set_size(u->menu, 240, 226);
+    int n = u->g.in_progress ? 3 : 2;
+    lv_obj_set_size(u->menu, 288, 12 + n * 62);
     lv_obj_align(u->menu, LV_ALIGN_BOTTOM_RIGHT, -PAD, -84);
     lv_obj_set_style_bg_color(u->menu, EG_SURFACE, 0);
     lv_obj_set_style_bg_opa(u->menu, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(u->menu, 3, 0);
     lv_obj_set_style_border_color(u->menu, EG_PINK, 0);
     lv_obj_set_style_radius(u->menu, 18, 0);
-    static const char *items[4] = {"Home", "Wi-Fi settings", "Forget this board", "Close"};
-    for (int i = 0; i < 4; i++) {
+    const char *items[3] = {"Home", "Resign", "Close"};
+    int ids[3] = {0, 1, 2};
+    if (!u->g.in_progress) { items[1] = "Close"; ids[1] = 2; }
+    for (int i = 0; i < n; i++) {
         lv_obj_t *b = lv_obj_create(u->menu);
         plain(b);
-        lv_obj_set_size(b, 240, 56);
-        lv_obj_set_pos(b, 0, 5 + i * 54);
-        lv_obj_set_user_data(b, (void *)(intptr_t)i);
-        lv_obj_t *l = mk_label(b, &eg_sora_16, i == 2 ? EG_PINK_SOFT : EG_FG, items[i]);
-        lv_obj_center(l);
+        lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_size(b, 288, 60);
+        lv_obj_set_pos(b, 0, 6 + i * 62);
+        lv_obj_set_user_data(b, (void *)(intptr_t)ids[i]);
+        lv_obj_center(mk_label(b, &eg_sora_20_bold, ids[i] == 1 ? EG_PINK_SOFT : EG_FG, items[i]));
         lv_obj_add_event_cb(b, menu_item_cb, LV_EVENT_CLICKED, screen);
     }
+}
+
+/* ---------- Moves drawer: slides in over the panel ---------- */
+
+static void drawer_x(void *o, int32_t v) { lv_obj_set_x(o, v); }
+
+static void drawer_close_done(lv_anim_t *a)
+{
+    ui_t *u = lv_anim_get_user_data(a);
+    close_overlay(&u->drawer);
+    u->drawer_list = NULL;
+}
+
+static void drawer_close_cb(lv_event_t *e)
+{
+    ui_t *u = U(lv_event_get_user_data(e));
+    if (!u->drawer) return;
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, u->drawer);
+    lv_anim_set_exec_cb(&a, drawer_x);
+    lv_anim_set_values(&a, 480, 800);
+    lv_anim_set_duration(&a, 180);
+    lv_anim_set_user_data(&a, u);
+    lv_anim_set_completed_cb(&a, drawer_close_done);
+    lv_anim_start(&a);
+}
+
+static void moves_cb(lv_event_t *e)
+{
+    lv_obj_t *screen = lv_event_get_user_data(e);
+    ui_t *u = U(screen);
+    if (u->drawer) { drawer_close_cb(e); return; }
+    close_overlay(&u->menu);
+    u->drawer = lv_obj_create(screen);
+    plain(u->drawer);
+    lv_obj_add_flag(u->drawer, LV_OBJ_FLAG_CLICKABLE);       /* swallow taps meant for the panel below */
+    lv_obj_set_size(u->drawer, PANEL_W, 480);
+    lv_obj_set_pos(u->drawer, 800, 0);
+    lv_obj_set_style_bg_color(u->drawer, EG_BG_VOID, 0);
+    lv_obj_set_style_bg_opa(u->drawer, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(u->drawer, 3, 0);
+    lv_obj_set_style_border_side(u->drawer, LV_BORDER_SIDE_LEFT, 0);
+    lv_obj_set_style_border_color(u->drawer, EG_CYAN, 0);
+    lv_obj_set_pos(mk_label(u->drawer, &eg_bungee_28, EG_CYAN, "MOVES"), 24, 20);
+    u->drawer_list = lv_obj_create(u->drawer);
+    plain(u->drawer_list);
+    lv_obj_set_size(u->drawer_list, PANEL_W - 40, 320);
+    lv_obj_set_pos(u->drawer_list, 24, 70);
+    lv_obj_set_flex_flow(u->drawer_list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_add_flag(u->drawer_list, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_t *close = lv_obj_create(u->drawer);
+    plain(close);
+    lv_obj_add_flag(close, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(close, PANEL_W - 40, 56);
+    lv_obj_set_pos(close, 20, 408);
+    lv_obj_set_style_border_width(close, 2, 0);
+    lv_obj_set_style_border_color(close, EG_CYAN, 0);
+    lv_obj_set_style_radius(close, LV_RADIUS_CIRCLE, 0);
+    lv_obj_center(mk_label(close, &eg_sora_20_bold, EG_CYAN, "Close"));
+    lv_obj_add_event_cb(close, drawer_close_cb, LV_EVENT_CLICKED, screen);
+    rebuild_moves(u);
+
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, u->drawer);
+    lv_anim_set_exec_cb(&a, drawer_x);
+    lv_anim_set_values(&a, 800, 480);
+    lv_anim_set_duration(&a, 200);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
 }
 
 /* ---------- build ---------- */
@@ -433,7 +566,7 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
         lv_obj_clear_flag(u->tint[i], LV_OBJ_FLAG_CLICKABLE);
 
         u->piece[i] = lv_image_create(c);
-        lv_image_set_scale(u->piece[i], 256 * SQ / 60);   /* piece PNGs are 60x60 */
+        /* pieces are stored at EG_PIECE_PX == SQ: drawn 1:1, no scaling */
         lv_obj_center(u->piece[i]);
         lv_obj_clear_flag(u->piece[i], LV_OBJ_FLAG_CLICKABLE);
         lv_obj_add_flag(u->piece[i], LV_OBJ_FLAG_HIDDEN);
@@ -482,49 +615,44 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
     lv_obj_set_style_bg_color(edge2, EG_BOARD_SHADOW, 0);
     lv_obj_set_style_bg_opa(edge2, LV_OPA_COVER, 0);
 
-    int cx = 4 + PAD;                         /* content x inside the panel */
+    int cx = 4 + PAD + 4;                     /* content x inside the panel */
     int cw = PANEL_W - cx - PAD;              /* content width */
 
     /* opponent strip */
     u->opp_name = mk_label(panel, &eg_sora_20_bold, EG_FG, "");
     lv_label_set_long_mode(u->opp_name, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(u->opp_name, cw - 110);
+    lv_obj_set_width(u->opp_name, cw);
     lv_obj_set_pos(u->opp_name, cx, 22);
-    u->opp_clock = mk_label(panel, &eg_vt323_56, EG_CYAN, "");
-    lv_obj_align(u->opp_clock, LV_ALIGN_TOP_RIGHT, -PAD, 6);
+    u->opp_sub = mk_label(panel, &eg_sora_16, EG_FG_HAZE, "");
+    lv_obj_set_pos(u->opp_sub, cx, 52);
+    u->opp_caps = lv_obj_create(panel);
+    plain(u->opp_caps);
+    lv_obj_set_size(u->opp_caps, cw, 30);
+    lv_obj_set_pos(u->opp_caps, cx, 82);
 
-    /* move list */
-    u->list = lv_obj_create(panel);
-    plain(u->list);
-    lv_obj_set_size(u->list, cw, 236);
-    lv_obj_set_pos(u->list, cx, 74);
-    lv_obj_set_style_bg_color(u->list, EG_BG_VOID, 0);
-    lv_obj_set_style_bg_opa(u->list, LV_OPA_50, 0);
-    lv_obj_set_style_radius(u->list, 12, 0);
-    lv_obj_set_style_pad_all(u->list, 8, 0);
-    lv_obj_set_flex_flow(u->list, LV_FLEX_FLOW_COLUMN);
-    lv_obj_add_flag(u->list, LV_OBJ_FLAG_SCROLLABLE);
-
-    u->status = mk_label(panel, &eg_sora_20_bold, EG_FG_HAZE, "");
-    lv_obj_set_pos(u->status, cx, 322);
+    /* status */
+    u->status = mk_label(panel, &eg_bungee_28, EG_FG_HAZE, "");
+    lv_obj_set_pos(u->status, cx, 170);
+    u->last = mk_label(panel, &eg_sora_16, EG_YELLOW, "");
+    lv_obj_set_pos(u->last, cx, 212);
 
     /* your strip */
-    u->you_name = mk_label(panel, &eg_sora_16, EG_FG_HAZE, "");
-    lv_obj_set_pos(u->you_name, cx, 358);
-    u->you_clock = mk_label(panel, &eg_vt323_56, EG_PINK, "");
-    lv_obj_align(u->you_clock, LV_ALIGN_TOP_RIGHT, -PAD, 340);
+    u->you_name = mk_label(panel, &eg_sora_20_bold, EG_FG, "");
+    lv_obj_set_pos(u->you_name, cx, 292);
+    u->you_caps = lv_obj_create(panel);
+    plain(u->you_caps);
+    lv_obj_set_size(u->you_caps, cw, 30);
+    lv_obj_set_pos(u->you_caps, cx, 324);
 
     /* buttons */
     lv_obj_t *row = lv_obj_create(panel);
     plain(row);
     lv_obj_set_size(row, cw, 56);
     lv_obj_set_pos(row, cx, 408);
-    int bw = (cw - 16) / 3;
-    u->btn_resign = mk_button(row, "Resign", EG_PINK, 0, bw);
-    u->btn_flip = mk_button(row, "Flip", EG_CYAN, bw + 8, bw);
-    u->btn_menu = mk_button(row, "Menu", EG_YELLOW, 2 * (bw + 8), bw);
-    lv_obj_add_event_cb(u->btn_resign, resign_cb, LV_EVENT_CLICKED, scr);
-    lv_obj_add_event_cb(u->btn_flip, flip_cb, LV_EVENT_CLICKED, scr);
+    int bw = (cw - 10) / 2;
+    u->btn_moves = mk_button(row, "Moves", EG_CYAN, 0, bw);
+    u->btn_menu = mk_button(row, "Menu", EG_YELLOW, bw + 10, bw);
+    lv_obj_add_event_cb(u->btn_moves, moves_cb, LV_EVENT_CLICKED, scr);
     lv_obj_add_event_cb(u->btn_menu, menu_cb, LV_EVENT_CLICKED, scr);
 
     return scr;
@@ -535,9 +663,11 @@ void eg_game_set(lv_obj_t *screen, const eg_game_t *g)
     ui_t *u = U(screen);
     bool new_game = strcmp(u->g.id, g->id) != 0;
     u->g = *g;
-    if (new_game) u->flipped = !g->you_white;
+    u->flipped = !g->you_white;              /* your side is always at the bottom */
     u->selected = -1;
+    u->sent = false;
     close_overlay(&u->promo);
+    if (new_game) { close_overlay(&u->menu); close_overlay(&u->drawer); u->drawer_list = NULL; }
     redraw_board(u);
     redraw_panel(u);
 }

@@ -84,8 +84,19 @@ int main(int argc, char **argv)
                       {"g2", "magnus_fan", false, "", 'b', false, 22},
                       {"g3", "Stockfish", true, "expert", 'b', false, 3}},
             .sets = {{"default", "Default"}, {"s1", "Vaporwave Rena"}, {"s2", "Jon Bo"}}};
-        if (strcmp(which, "sets") == 0) eg_sets_set(eg_sets_create(lv_screen_active(), NULL, NULL), &h);
+        for (int i = 0; i < 3; i++) { strcpy(h.sets[i].preview_k, "wk"); strcpy(h.sets[i].preview_n, "wn"); }
+        if (strcmp(which, "sets") == 0) eg_sets_set(eg_sets_create(lv_screen_active(), NULL), &h);
         else { eg_home_cb_t cb = {0}; eg_home_set(eg_home_create(lv_screen_active(), &cb), &h); }
+    } else if (strcmp(which, "make") == 0) {
+        eg_make_create(lv_screen_active());
+    } else if (strcmp(which, "rank") == 0) {
+        static eg_rank_t r = {.n = 6, .you_rank = 4, .you_elo = 1240, .rows = {
+            {1, "queenbee", 1820, false}, {2, "magnus_fan", 1655, false}, {3, "knightowl", 1490, false},
+            {4, "deltajuliet", 1240, true}, {5, "pawnstar", 1180, false}, {6, "rookie", 1010, false}}};
+        eg_rank_set(eg_rank_create(lv_screen_active()), &r, NULL);
+    } else if (strcmp(which, "you") == 0) {
+        static eg_home_t h = {.name = "deltajuliet", .elo = 1240};
+        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.10.0"), &h);
     } else if (strcmp(which, "ai") == 0) {
         eg_ai_setup_create(lv_screen_active(), NULL, NULL);
     } else if (strcmp(which, "challenge") == 0) {
@@ -93,8 +104,9 @@ int main(int argc, char **argv)
     } else {
         eg_game_cb_t cb = {.on_move = nop_move};
         lv_obj_t *scr = eg_game_create(lv_screen_active(), &cb);
-        eg_game_t g;
+        static eg_game_t g;
         sample(&g);
+        g.opp_ai = true; strcpy(g.opp_difficulty, "intermediate"); strcpy(g.opponent, "Stockfish");
         eg_game_set(scr, &g);
     }
 

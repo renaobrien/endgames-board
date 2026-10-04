@@ -31,7 +31,6 @@ void eg_idle_refresh(lv_obj_t *screen);   /* re-reads pieces after the set chang
 typedef struct {
     void (*on_play_ai)(void);                 /* open the computer setup screen */
     void (*on_challenge)(void);               /* open the challenge screen and create a link */
-    void (*on_sets)(void);                    /* open the sets screen */
     void (*on_open_game)(const char *game_id);
 } eg_home_cb_t;
 
@@ -47,8 +46,15 @@ void eg_ai_setup_set_status(lv_obj_t *screen, const char *msg);
 lv_obj_t *eg_challenge_create(lv_obj_t *parent, void (*on_back)(void));
 void eg_challenge_set(lv_obj_t *screen, const char *url, const char *status);   /* url NULL hides the QR */
 
-/* Piece sets: tap one to make it active. */
-lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *set_id), void (*on_back)(void));
+/* Tabs (same as the website): 0 Play, 1 Make, 2 Sets, 3 Rank, 4 You. */
+void eg_screens_set_tab_handler(void (*on_tab)(int tab));
+
+lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *set_id));
 void eg_sets_set(lv_obj_t *screen, const eg_home_t *h);
+lv_obj_t *eg_make_create(lv_obj_t *parent);
+lv_obj_t *eg_rank_create(lv_obj_t *parent);
+void eg_rank_set(lv_obj_t *screen, const eg_rank_t *d, const char *error);   /* error non-NULL shows it instead */
+lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *version);
+void eg_you_set(lv_obj_t *screen, const eg_home_t *h);
 
 const char *eg_difficulty_label(const char *api_value);   /* beginner -> Easy, ... */

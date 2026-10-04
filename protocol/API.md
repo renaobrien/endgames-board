@@ -145,7 +145,8 @@ One call for the home screen.
     }
   ],
   "activeSetId": "uuid-or-default",
-  "sets": [ { "id": "uuid-or-default", "name": "Default", "kind": "default" } ]
+  "sets": [ { "id": "uuid-or-default", "name": "Default", "kind": "default",
+              "preview": { "wk": "https://.../wk.png", "wn": "https://.../wn.png" } } ]
 }
 ```
 
@@ -178,6 +179,26 @@ The board shows `url` as a QR. When someone accepts, the game appears in `board-
 ### Games against the computer
 
 `board-game` and `board-game?gameId=` include computer games. After you move with `board-move`, the server makes the computer's reply before responding, so the returned `game` already includes it (or, if that takes longer than the request allows, the reply appears on the next `board-game` poll). Difficulty matches the website.
+
+`sets[].preview` holds the white king and knight PNGs (the same 60x60 images `board-pieces` serves for that set) for the Sets tab.
+
+### Leaderboard: `GET /board-leaderboard`
+
+The same ranking the website shows, top 50.
+
+```json
+200 {
+  "apiVersion": 1,
+  "entries": [ { "rank": 1, "name": "queenbee", "elo": 1820, "isYou": false } ],
+  "you": { "rank": 42, "elo": 1240 }
+}
+```
+
+`you` is `null` before your first ranked game.
+
+### Make a set
+
+The board has no camera, so its Make tab shows a QR for `https://endgam.es/make`, which opens the website's Make tab (after sign-in) on the phone. New sets show up in `board-home`.
 
 ### Resign: `POST /board-resign`
 

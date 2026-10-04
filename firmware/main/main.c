@@ -25,7 +25,8 @@
 static const char *TAG = "eg";
 
 static char token[96];
-static lv_obj_t *scr_wifi, *scr_pair, *scr_home, *scr_ai, *scr_chal, *scr_sets, *scr_game;
+static lv_obj_t *scr_wifi, *scr_pair, *scr_home, *scr_ai, *scr_chal, *scr_sets, *scr_make, *scr_rank, *scr_you, *scr_game;
+static eg_rank_t rank;
 static eg_home_t home;                  /* last board-home result */
 static eg_game_t cur;
 static bool have_game;
@@ -116,7 +117,7 @@ static void on_menu_wifi(void)
  * the network task picks up within 250 ms. */
 
 static struct {
-    volatile bool home, ai, challenge, open, set, resign;
+    volatile bool home, ai, challenge, open, set, resign, rank, thumbs;
     char difficulty[16], color[8], game_id[40], set_id[48];
 } req;
 
@@ -130,7 +131,17 @@ static void on_home_challenge(void)
     snprintf(req.color, sizeof req.color, "random");
     req.challenge = true;
 }
-static void on_home_sets(void) { eg_sets_set(scr_sets, &home); ui_load(scr_sets); }
+static void on_tab(int tab)
+{
+    lv_obj_t *screens[5] = {scr_home, scr_make, scr_sets, scr_rank, scr_you};
+    if (tab < 0 || tab > 4) return;
+    if (tab == 2) { eg_sets_set(scr_sets, &home); req.thumbs = true; }
+    if (tab == 3) req.rank = true;
+    if (tab == 4) eg_you_set(scr_you, &home);
+    if (tab == 0) req.home = true;
+    behind = screens[tab];                 /* Wi-Fi's Back returns here */
+    ui_load(screens[tab]);
+}
 static void on_home_open(const char *id) { snprintf(req.game_id, sizeof req.game_id, "%s", id); req.open = true; }
 static void on_sub_back(void) { req.home = true; ui_load(scr_home); }
 static void on_ai_start(const char *difficulty, const char *color)
@@ -345,6 +356,22 @@ static void net_task(void *arg)
                     eg_pieces_load(token, &changed);      /* new set's pieces for every board */
                 }
             }
+            if (req.rank) {
+                req.rank = false;
+                r = eg_api_leaderboard(token, &rank);
+                lvgl_port_lock(0);
+                eg_rank_set(scr_rank, &rank, r == EG_OK ? NULL : "Couldn't load the leaderboard.");
+                lvgl_port_unlock();
+            }
+            if (req.thumbs) {
+                req.thumbs = false;
+                bool any = false;
+                for (int i = 0; i < home.n_sets; i++) {
+                    if (!eg_thumb_find(home.sets[i].preview_k) && eg_thumb_load(home.sets[i].preview_k)) any = true;
+                    if (!eg_thumb_find(home.sets[i].preview_n) && eg_thumb_load(home.sets[i].preview_n)) any = true;
+                }
+                if (any) { lvgl_port_lock(0); eg_sets_set(scr_sets, &home); lvgl_port_unlock(); }
+            }
             if (req.resign && view == V_GAME && have_game) {
                 req.resign = false;
                 r = eg_api_resign(token, cur.id, &scratch);
@@ -354,6 +381,7 @@ static void net_task(void *arg)
                 mailbox.pending = false;
                 r = eg_api_move(token, &cur, mailbox.from, mailbox.to, mailbox.promo, &scratch);
                 if (r != EG_ERROR && r != EG_UNAUTHORIZED) apply_game(&scratch);   /* 200, 409 and 422 carry the game */
+                else if (r == EG_ERROR && eg_api_game_id(token, cur.id, &scratch) == EG_OK) apply_game(&scratch);   /* undo the optimistic move */
                 next_poll = now + pdMS_TO_TICKS(3000);   /* computer replies show up fast */
             }
             if (r == EG_UNAUTHORIZED) { unauthorized = true; break; }
@@ -367,7 +395,7 @@ static void net_task(void *arg)
                 } else {
                     r = eg_api_home(token, &home);
                     lvgl_port_lock(0);
-                    if (r == EG_OK) eg_home_set(scr_home, &home);
+                    if (r == EG_OK) { eg_home_set(scr_home, &home); eg_you_set(scr_you, &home); }
                     else if (r != EG_UNAUTHORIZED) eg_home_set_status(scr_home, "Couldn't load your games. Retrying...");
                     lvgl_port_unlock();
                     if (view == V_CHAL && r == EG_OK && chal_seen_n >= 0) {
@@ -412,13 +440,16 @@ void app_main(void)
     scr_wifi = eg_wifi_create(NULL, on_wifi_connect, request_scan, on_wifi_back);
     eg_screens_set_wifi_handler(on_menu_wifi);
     scr_pair = eg_pair_create(NULL);
-    eg_home_cb_t hcb = {.on_play_ai = on_home_play_ai, .on_challenge = on_home_challenge, .on_sets = on_home_sets, .on_open_game = on_home_open};
+    eg_screens_set_tab_handler(on_tab);
+    eg_home_cb_t hcb = {.on_play_ai = on_home_play_ai, .on_challenge = on_home_challenge, .on_open_game = on_home_open};
     scr_home = eg_home_create(NULL, &hcb);
     scr_ai = eg_ai_setup_create(NULL, on_ai_start, on_sub_back);
     scr_chal = eg_challenge_create(NULL, on_sub_back);
-    scr_sets = eg_sets_create(NULL, on_pick_set, on_sub_back);
-    eg_game_cb_t cb = {.on_move = on_move, .on_resign = on_resign, .on_menu_forget = on_forget,
-                       .on_menu_wifi = on_menu_wifi, .on_menu_home = on_menu_home};
+    scr_sets = eg_sets_create(NULL, on_pick_set);
+    scr_make = eg_make_create(NULL);
+    scr_rank = eg_rank_create(NULL);
+    scr_you = eg_you_create(NULL, on_forget, eg_ota_version());
+    eg_game_cb_t cb = {.on_move = on_move, .on_resign = on_resign, .on_menu_home = on_menu_home};
     scr_game = eg_game_create(NULL, &cb);
     lvgl_port_unlock();
     xTaskCreate(scan_task, "scan", 10 * 1024, NULL, 4, &scan_task_h);

@@ -16,6 +16,8 @@ typedef struct {
     int  move_count;
     char last_from[3], last_to[3];
     char opponent[32];
+    bool opp_ai;             /* playing the computer */
+    char opp_difficulty[16]; /* beginner | intermediate | advanced | expert */
     char legal[EG_MAX_LEGAL][6];  /* UCI: "e2e4", "e7e8q" */
     int  legal_n;
     char moves[160][8];      /* last 160 SAN moves, oldest first */

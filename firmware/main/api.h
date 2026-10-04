@@ -42,7 +42,7 @@ typedef struct {
     int move_count;
 } eg_home_game_t;
 
-typedef struct { char id[48]; char name[33]; } eg_set_t;
+typedef struct { char id[48]; char name[33]; char preview_k[160], preview_n[160]; } eg_set_t;   /* preview: white king and knight PNGs */
 
 typedef struct {
     char name[33];
@@ -66,6 +66,15 @@ eg_result_t eg_api_new_challenge(const char *token, const char *color, char url[
 eg_result_t eg_api_resign(const char *token, const char *game_id, eg_game_t *out);
 /* POST /board-set */
 eg_result_t eg_api_set(const char *token, const char *set_id);
+
+/* GET /board-leaderboard */
+#define EG_RANK_MAX 50
+typedef struct {
+    int n;
+    struct { int rank; char name[33]; int elo; bool you; } rows[EG_RANK_MAX];
+    int you_rank, you_elo;     /* -1 when unranked */
+} eg_rank_t;
+eg_result_t eg_api_leaderboard(const char *token, eg_rank_t *out);
 
 /* Download a URL into PSRAM. Caller frees with heap_caps_free. Returns NULL on failure. */
 void *eg_http_download(const char *url, size_t *len);
