@@ -16,7 +16,8 @@ plate=D(plate, box(BORDER,BORDER,-1,L-BORDER,W-BORDER,T+1))
 wall=box(-CLR-WALL,0,0,-CLR,W,15.5)                      # short wall along the USB-C edge
 base=box(-CLR-WALL,0,0,0.01,W,T)                       # joins wall to plate
 t=U([plate,wall,base])
-cuts=[cyl(x,y,-1,T+1,3.4) for x in (3.0,L-3.0) for y in (2.82,W-3.0)]   # Eagle hole centers, M3 clearance
+HX=(2.5,L-2.5); HY=(3.33,W-3.13)   # caliper 2026-10-04: 5.00" x 2.90" center to center, 0.0645" hole edge to board edge
+cuts=[cyl(x,y,-1,T+1,3.6) for x in HX for y in HY]
 # Screen down: glass+PCB = 5.1 mm, USB-C receptacle (3.3 mm tall) sits on top, center about 6.8 mm up.
 for y in (48.57,):                                   # only the USB-C the case uses (USB2.0)
     cuts.append(box(-CLR-WALL-1,y-5.0,T+6.9-2.2,-CLR+1,y+5.0,T+6.9+2.2))   # board rests on the plate, so + T   # 10 x 4.4 mm window, real port is about 9 x 3.3

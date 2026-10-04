@@ -25,7 +25,8 @@ LID_Z=GLASS_TOP+0.2
 LID_T=2.0
 TOP=LID_Z+LID_T
 # Hole centers from the Eagle file: 3.0 mm from the short edges, 2.82 mm from the UART1/I2C edge, 3.0 mm from the microSD edge. Drill 3.2 mm (M3).
-holes=[(3.0,2.82),(L-3.0,2.82),(3.0,W-3.0),(L-3.0,W-3.0)]
+# Caliper 2026-10-04 overrides Eagle: 127.0 x 73.66 mm center to center, 3.33 mm from the UART1/I2C edge.
+holes=[(2.5,3.33),(L-2.5,3.33),(2.5,W-3.13),(L-2.5,W-3.13)]
 # Lit area from caliper borders: glass 119.4 x 75.8 centered on PCB; borders 0.2" sides, 0.1" UART1 edge, 0.3" microSD edge.
 gx=(L-119.4)/2; gy=(W-75.8)/2
 win=(gx+5.08+0.3, gy+2.54+0.3, L-gx-5.08-0.3, W-gy-7.62-0.3)
