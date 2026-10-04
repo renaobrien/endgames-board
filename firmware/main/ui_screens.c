@@ -27,10 +27,143 @@ static lv_obj_t *label(lv_obj_t *p, const lv_font_t *f, lv_color_t c, const char
     return l;
 }
 
+/* ---------- keyboard ----------
+ * Phone-style: shift capitalizes one letter then drops back to lowercase, double-tap shift locks caps,
+ * "123" and "#+=" pages cover every printable ASCII character a Wi-Fi password can use.
+ * Replaces LVGL's default handler (which has a hide-keyboard key, cursor arrows and a "1#" key). */
+
+#define K_SHIFT LV_SYMBOL_UP
+#define K_BKSP  LV_SYMBOL_BACKSPACE
+#define K_ENTER LV_SYMBOL_NEW_LINE
+
+static const char *map_lower[] = {"q","w","e","r","t","y","u","i","o","p","\n",
+    "a","s","d","f","g","h","j","k","l","\n",
+    K_SHIFT,"z","x","c","v","b","n","m",K_BKSP,"\n",
+    "123"," ",K_ENTER,""};
+static const char *map_upper[] = {"Q","W","E","R","T","Y","U","I","O","P","\n",
+    "A","S","D","F","G","H","J","K","L","\n",
+    K_SHIFT,"Z","X","C","V","B","N","M",K_BKSP,"\n",
+    "123"," ",K_ENTER,""};
+static const char *map_num[] = {"1","2","3","4","5","6","7","8","9","0","\n",
+    "-","/",":",";","(",")","$","&","@","\"","\n",
+    "#+=",".",",","?","!","'",K_BKSP,"\n",
+    "ABC"," ",K_ENTER,""};
+static const char *map_sym[] = {"[","]","{","}","#","%","^","*","+","=","\n",
+    "_","\\","|","~","<",">","`",".",",","\n",
+    "123","?","!","'","\"","@",K_BKSP,"\n",
+    "ABC"," ",K_ENTER,""};
+
+#define NOREP LV_BUTTONMATRIX_CTRL_NO_REPEAT
+/* widths are relative within a row and must stay 1..15 (higher bits are flags) */
+static const lv_buttonmatrix_ctrl_t ctrl_alpha[] = {
+    2,2,2,2,2,2,2,2,2,2,
+    2,2,2,2,2,2,2,2,2,
+    3|NOREP,2,2,2,2,2,2,2,3,
+    3|NOREP,10,3|NOREP};
+static const lv_buttonmatrix_ctrl_t ctrl_num[] = {
+    2,2,2,2,2,2,2,2,2,2,
+    2,2,2,2,2,2,2,2,2,2,
+    3|NOREP,2,2,2,2,2,3,
+    3|NOREP,10,3|NOREP};
+static const lv_buttonmatrix_ctrl_t ctrl_sym[] = {
+    2,2,2,2,2,2,2,2,2,2,
+    2,2,2,2,2,2,2,2,2,
+    3|NOREP,2,2,2,2,2,3,
+    3|NOREP,10,3|NOREP};
+
+typedef struct {
+    lv_obj_t *kb;
+    bool caps_lock;
+    uint32_t last_shift_ms;
+    void (*on_enter)(void *ctx, lv_obj_t *ta);
+    void *ctx;
+} kbd_t;
+
+static void kbd_mode(kbd_t *k, lv_keyboard_mode_t m)
+{
+    lv_keyboard_set_mode(k->kb, m);
+    if (m == LV_KEYBOARD_MODE_TEXT_UPPER) {
+        /* shift key (index 19) shows checked; locked caps also stays checked */
+        lv_buttonmatrix_set_button_ctrl(k->kb, 19, LV_BUTTONMATRIX_CTRL_CHECKED);
+    }
+}
+
+static void kbd_event(lv_event_t *e)
+{
+    kbd_t *k = lv_event_get_user_data(e);
+    lv_obj_t *kb = k->kb;
+    uint32_t id = lv_buttonmatrix_get_selected_button(kb);
+    if (id == LV_BUTTONMATRIX_BUTTON_NONE) return;
+    const char *t = lv_buttonmatrix_get_button_text(kb, id);
+    if (!t) return;
+    lv_obj_t *ta = lv_keyboard_get_textarea(kb);
+    lv_keyboard_mode_t mode = lv_keyboard_get_mode(kb);
+
+    if (strcmp(t, K_SHIFT) == 0) {
+        uint32_t now = lv_tick_get();
+        if (mode == LV_KEYBOARD_MODE_TEXT_LOWER) {
+            bool dbl = now - k->last_shift_ms < 400;
+            k->caps_lock = dbl;
+            kbd_mode(k, LV_KEYBOARD_MODE_TEXT_UPPER);
+        } else if (!k->caps_lock && now - k->last_shift_ms < 400) {
+            k->caps_lock = true;                       /* second tap of a double tap */
+            kbd_mode(k, LV_KEYBOARD_MODE_TEXT_UPPER);
+        } else {
+            k->caps_lock = false;
+            kbd_mode(k, LV_KEYBOARD_MODE_TEXT_LOWER);
+        }
+        k->last_shift_ms = now;
+        return;
+    }
+    if (strcmp(t, "123") == 0) { kbd_mode(k, LV_KEYBOARD_MODE_SPECIAL); return; }
+    if (strcmp(t, "#+=") == 0) { kbd_mode(k, LV_KEYBOARD_MODE_USER_1); return; }
+    if (strcmp(t, "ABC") == 0) { k->caps_lock = false; kbd_mode(k, LV_KEYBOARD_MODE_TEXT_LOWER); return; }
+    if (!ta) return;
+    if (strcmp(t, K_BKSP) == 0) { lv_textarea_delete_char(ta); return; }
+    if (strcmp(t, K_ENTER) == 0) { if (k->on_enter) k->on_enter(k->ctx, ta); return; }
+
+    lv_textarea_add_text(ta, t);
+    if (mode == LV_KEYBOARD_MODE_TEXT_UPPER && !k->caps_lock) kbd_mode(k, LV_KEYBOARD_MODE_TEXT_LOWER);
+}
+
+static kbd_t *kbd_create(lv_obj_t *parent, void (*on_enter)(void *, lv_obj_t *), void *ctx)
+{
+    kbd_t *k = lv_malloc(sizeof *k);
+    memset(k, 0, sizeof *k);
+    k->on_enter = on_enter;
+    k->ctx = ctx;
+    k->kb = lv_keyboard_create(parent);
+    lv_obj_remove_event_cb(k->kb, lv_keyboard_def_event_cb);
+    lv_keyboard_set_popovers(k->kb, false);
+    lv_keyboard_set_map(k->kb, LV_KEYBOARD_MODE_TEXT_LOWER, map_lower, ctrl_alpha);
+    lv_keyboard_set_map(k->kb, LV_KEYBOARD_MODE_TEXT_UPPER, map_upper, ctrl_alpha);
+    lv_keyboard_set_map(k->kb, LV_KEYBOARD_MODE_SPECIAL, map_num, ctrl_num);
+    lv_keyboard_set_map(k->kb, LV_KEYBOARD_MODE_USER_1, map_sym, ctrl_sym);
+    lv_keyboard_set_mode(k->kb, LV_KEYBOARD_MODE_TEXT_LOWER);
+    lv_obj_add_event_cb(k->kb, kbd_event, LV_EVENT_VALUE_CHANGED, k);
+
+    lv_obj_set_size(k->kb, 800, 216);
+    lv_obj_align(k->kb, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_obj_set_style_pad_all(k->kb, 6, 0);
+    lv_obj_set_style_pad_gap(k->kb, 6, 0);
+    lv_obj_set_style_bg_color(k->kb, EG_BG_VOID, 0);
+    lv_obj_set_style_bg_color(k->kb, EG_SURFACE, LV_PART_ITEMS);
+    lv_obj_set_style_bg_color(k->kb, EG_CYAN, LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_bg_color(k->kb, EG_PINK, LV_PART_ITEMS | LV_STATE_PRESSED);
+    lv_obj_set_style_text_color(k->kb, EG_FG, LV_PART_ITEMS);
+    lv_obj_set_style_text_color(k->kb, EG_BG_VOID, LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_text_font(k->kb, &lv_font_montserrat_20, LV_PART_ITEMS);
+    lv_obj_set_style_border_width(k->kb, 0, LV_PART_ITEMS);
+    lv_obj_set_style_shadow_width(k->kb, 0, LV_PART_ITEMS);
+    lv_obj_set_style_radius(k->kb, 8, LV_PART_ITEMS);
+    return k;
+}
+
 /* ---------- Wi-Fi ---------- */
 
 typedef struct {
-    lv_obj_t *ssid, *pass, *kb, *err, *list;
+    lv_obj_t *ssid, *pass, *err, *list, *show_lbl;
+    kbd_t *k;
     eg_wifi_cb_t cb;
     void (*rescan)(void);
 } wifi_t;
@@ -38,15 +171,34 @@ typedef struct {
 static void focus_cb(lv_event_t *e)
 {
     wifi_t *w = lv_event_get_user_data(e);
-    lv_keyboard_set_textarea(w->kb, lv_event_get_target(e));
+    lv_keyboard_set_textarea(w->k->kb, lv_event_get_target(e));
+}
+
+static void do_connect(wifi_t *w)
+{
+    if (!lv_textarea_get_text(w->ssid)[0]) { lv_label_set_text(w->err, "Pick a network first."); return; }
+    lv_label_set_text(w->err, "Connecting...");
+    if (w->cb) w->cb(lv_textarea_get_text(w->ssid), lv_textarea_get_text(w->pass));
+}
+
+static void enter_cb(void *ctx, lv_obj_t *ta)
+{
+    wifi_t *w = ctx;
+    if (ta == w->ssid) lv_keyboard_set_textarea(w->k->kb, w->pass);
+    else do_connect(w);
+}
+
+static void show_cb(lv_event_t *e)
+{
+    wifi_t *w = lv_event_get_user_data(e);
+    bool hidden = lv_textarea_get_password_mode(w->pass);
+    lv_textarea_set_password_mode(w->pass, !hidden);
+    lv_label_set_text(w->show_lbl, hidden ? "Hide" : "Show");
 }
 
 static void connect_cb(lv_event_t *e)
 {
-    wifi_t *w = lv_event_get_user_data(e);
-    if (!lv_textarea_get_text(w->ssid)[0]) { lv_label_set_text(w->err, "Pick a network first."); return; }
-    lv_label_set_text(w->err, "Connecting...");
-    if (w->cb) w->cb(lv_textarea_get_text(w->ssid), lv_textarea_get_text(w->pass));
+    do_connect(lv_event_get_user_data(e));
 }
 
 static void rescan_cb(lv_event_t *e)
@@ -66,7 +218,7 @@ static void pick_cb(lv_event_t *e)
     uint32_t n = lv_obj_get_child_count(w->list);
     for (uint32_t i = 0; i < n; i++) lv_obj_remove_state(lv_obj_get_child(w->list, i), LV_STATE_CHECKED);
     lv_obj_add_state(btn, LV_STATE_CHECKED);
-    lv_keyboard_set_textarea(w->kb, w->pass);                 /* keyboard jumps to the password */
+    lv_keyboard_set_textarea(w->k->kb, w->pass);              /* keyboard jumps to the password */
 }
 
 static lv_obj_t *field(lv_obj_t *p, const char *placeholder, int y, bool pw, wifi_t *w)
@@ -129,7 +281,7 @@ lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect, void (*on_re
 
     /* right: nearby networks */
     w->list = lv_obj_create(s);
-    lv_obj_set_size(w->list, 320, 150);
+    lv_obj_set_size(w->list, 320, 140);
     lv_obj_set_pos(w->list, 440, 72);
     lv_obj_set_flex_flow(w->list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_bg_color(w->list, EG_SURFACE, 0);
@@ -139,16 +291,22 @@ lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect, void (*on_re
     lv_obj_set_style_pad_row(w->list, 4, 0);
     lv_obj_set_scroll_dir(w->list, LV_DIR_VER);
     list_message(w, "Searching...");
-    lv_obj_add_event_cb(pill(s, "Scan again", EG_SURFACE, 440, 228, 180, 44), rescan_cb, LV_EVENT_CLICKED, w);
+    lv_obj_add_event_cb(pill(s, "Scan again", EG_SURFACE, 440, 218, 180, 40), rescan_cb, LV_EVENT_CLICKED, w);
 
-    w->kb = lv_keyboard_create(s);
-    lv_obj_set_size(w->kb, 800, 200);
-    lv_obj_set_style_bg_color(w->kb, EG_BG_VOID, 0);
-    lv_obj_set_style_bg_color(w->kb, EG_SURFACE, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(w->kb, EG_FG, LV_PART_ITEMS);
-    lv_obj_set_style_border_width(w->kb, 0, LV_PART_ITEMS);
-    lv_obj_align(w->kb, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_keyboard_set_textarea(w->kb, w->pass);
+    /* Show / Hide inside the password field */
+    lv_obj_t *sb = lv_button_create(s);
+    lv_obj_set_size(sb, 76, 40);
+    lv_obj_set_pos(sb, 40 + 360 - 76 - 6, 134 + 6);
+    lv_obj_set_style_bg_color(sb, EG_BG_STAGE, 0);
+    lv_obj_set_style_shadow_width(sb, 0, 0);
+    lv_obj_set_style_radius(sb, 6, 0);
+    w->show_lbl = label(sb, &eg_sora_16, EG_CYAN, "Show");
+    lv_obj_center(w->show_lbl);
+    lv_obj_add_event_cb(sb, show_cb, LV_EVENT_CLICKED, w);
+    lv_obj_set_style_pad_right(w->pass, 86, 0);       /* typed text never runs under the button */
+
+    w->k = kbd_create(s, enter_cb, w);
+    lv_keyboard_set_textarea(w->k->kb, w->pass);
     return s;
 }
 
