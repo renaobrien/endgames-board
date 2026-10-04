@@ -1,4 +1,7 @@
-# Name,   Type, SubType, Offset,  Size
-nvs,      data, nvs,     0x9000,  0x6000
-phy_init, data, phy,     0xf000,  0x1000
-factory,  app,  factory, 0x10000, 6M
+# Name,   Type, SubType, Offset,   Size
+# Two app slots so updates download into the idle slot; a bad update rolls back to the other.
+# nvs stays at 0x9000 so saved Wi-Fi and the pairing token survive the switch from the old layout.
+nvs,      data, nvs,     0x9000,   0x6000
+otadata,  data, ota,     0xf000,   0x2000
+ota_0,    app,  ota_0,   0x20000,  6M
+ota_1,    app,  ota_1,   ,         6M

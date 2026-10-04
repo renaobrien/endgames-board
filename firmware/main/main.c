@@ -9,6 +9,9 @@
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "nvs_flash.h"
+#include "ota.h"
+#include "fonts.h"
+#include "theme.h"
 #include "pieces_store.h"
 #include "store.h"
 #include "ui_game.h"
@@ -169,10 +172,36 @@ static void ensure_wifi(void)
     }
 }
 
+/* ---------- updates ---------- */
+
+static void show_updating(const char *version)
+{
+    lvgl_port_lock(0);
+    lv_obj_t *s = lv_obj_create(NULL);
+    lv_obj_set_style_bg_color(s, EG_BG_STAGE, 0);
+    lv_obj_t *t = lv_label_create(s);
+    lv_obj_set_style_text_font(t, &eg_bungee_28, 0);
+    lv_obj_set_style_text_color(t, EG_YELLOW, 0);
+    lv_label_set_text(t, "UPDATING");
+    lv_obj_align(t, LV_ALIGN_CENTER, 0, -24);
+    lv_obj_t *v = lv_label_create(s);
+    lv_obj_set_style_text_font(v, &eg_sora_20, 0);
+    lv_obj_set_style_text_color(v, EG_FG_HAZE, 0);
+    lv_label_set_text_fmt(v, "Version %s. Keep it plugged in.", version);
+    lv_obj_align(v, LV_ALIGN_CENTER, 0, 24);
+    lv_screen_load(s);
+    lvgl_port_unlock();
+}
+
+#define UPDATE_CHECK_MS (6 * 60 * 60 * 1000)
+
 static void net_task(void *arg)
 {
     (void)arg;
     ensure_wifi();
+    eg_ota_mark_good();                         /* this version gets online: keep it */
+    eg_ota_check_and_update(show_updating);     /* restarts if there is a newer one */
+    TickType_t last_update_check = xTaskGetTickCount();
     eg_store_load_token(token);
     for (;;) {
         if (!token[0]) {
@@ -184,6 +213,10 @@ static void net_task(void *arg)
         int idle_ms = 0;
         for (;;) {
             if (want_wifi_screen) { want_wifi_screen = false; show(scr_wifi); request_scan(); }
+            if (!have_game && xTaskGetTickCount() - last_update_check > pdMS_TO_TICKS(UPDATE_CHECK_MS)) {
+                last_update_check = xTaskGetTickCount();   /* only between games */
+                if (!eg_ota_check_and_update(show_updating) && token[0]) show(scr_idle);
+            }
             if (creds_pending) {                         /* switched networks from the menu */
                 if (try_pending_creds()) show(have_game ? scr_game : scr_idle);
                 continue;
