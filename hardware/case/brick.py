@@ -52,8 +52,6 @@ TRAVEL_MAX=7.62-1.5                        # most the nub can move inside its bo
 EXT_W=4.0
 cuts.append(box(-1,C+SW_Y-(EXT_W+TRAVEL_MAX)/2-0.4,EXT_Z0-0.4,WALL+1,C+SW_Y+(EXT_W+TRAVEL_MAX)/2+0.4,EXT_Z1+0.4))   # power slider slot
 cuts.append(box(CX+114.3-8,OY-WALL-1,z_conn-2.5,CX+114.3+8,OY+1,PCB_BOT+0.5))  # microSD
-# UART3-IN (5V in) white connector overhangs the USB-C edge ~5 mm (photos): open the wall there
-cuts.append(box(-1,C+53,PCB_BOT-8.0,WALL+1,C+72,PCB_BOT+0.5))
 for y in (48,55):                        # BOOT / RESET access from the back
     cuts.append(cyl(CX+127.1,C+y,-1,FLOOR+1,4.5))
 tray=D(tray,U(cuts))
