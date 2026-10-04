@@ -28,13 +28,23 @@ static char token[96];
 static lv_obj_t *scr_wifi, *scr_pair, *scr_idle, *scr_game;
 static eg_game_t cur;
 static bool have_game;
-static volatile bool want_wifi_screen;
+static volatile bool want_wifi_screen, want_wifi_back;
+
 
 static void show(lv_obj_t *s)
 {
     lvgl_port_lock(0);
     lv_screen_load(s);
     lvgl_port_unlock();
+}
+
+/* Main screens (pairing, idle, game). If the Wi-Fi screen is open on top, remember it for Back instead. */
+static lv_obj_t *behind;
+static bool wifi_open;
+static void show_main(lv_obj_t *s)
+{
+    behind = s;
+    if (!wifi_open) show(s);
 }
 
 /* ---------- UI callbacks (run in LVGL task) ---------- */
@@ -90,6 +100,11 @@ static void request_scan(void)
     if (scan_task_h) xTaskNotifyGive(scan_task_h);
 }
 
+static void on_wifi_back(void)
+{
+    want_wifi_back = true;
+}
+
 static void on_menu_wifi(void)
 {
     want_wifi_screen = true;
@@ -113,20 +128,25 @@ static void apply_game(const eg_game_t *g)
     have_game = true;
     lvgl_port_lock(0);
     eg_game_set(scr_game, g);
-    lv_screen_load(scr_game);
+    behind = scr_game;
+    if (!wifi_open) lv_screen_load(scr_game);
     lvgl_port_unlock();
 }
+
+static void handle_wifi(void);
 
 static bool pair(void)
 {
     eg_pairing_t p;
-    show(scr_pair);
-    while (eg_api_pair_start(&p) != EG_OK) vTaskDelay(pdMS_TO_TICKS(5000));
+    show_main(scr_pair);
+    while (eg_api_pair_start(&p) != EG_OK) {
+        for (int i = 0; i < 20; i++) { vTaskDelay(pdMS_TO_TICKS(250)); handle_wifi(); }
+    }
     lvgl_port_lock(0);
     eg_pair_set_code(scr_pair, p.code, p.claim_url[0] ? p.claim_url : NULL);
     lvgl_port_unlock();
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(3000));
+        for (int i = 0; i < 12; i++) { vTaskDelay(pdMS_TO_TICKS(250)); handle_wifi(); }
         eg_result_t r = eg_api_pair_poll(p.poll_secret, token);
         if (r == EG_OK) { eg_store_save_token(token); return true; }
         if (r == EG_EXPIRED) return false;      /* caller starts over with a fresh code */
@@ -150,7 +170,33 @@ static bool try_pending_creds(void)
         return true;
     }
     wifi_error("Couldn't connect. Check the password.");
+    if (wifi_open) {                      /* switching from a working network: get back on it meanwhile */
+        char ssid[33] = {0}, pass[65] = {0};
+        if (eg_store_load_wifi(ssid, pass) && ssid[0]) eg_bsp_wifi_connect(ssid, pass, 20000);
+    }
     return false;
+}
+
+/* Wi-Fi screen opened from a main screen: Back, or a new network that works, returns there. */
+static void handle_wifi(void)
+{
+    if (want_wifi_screen) {
+        want_wifi_screen = false;
+        wifi_open = true;
+        lvgl_port_lock(0);
+        eg_wifi_set_back_visible(scr_wifi, true);
+        eg_wifi_set_error(scr_wifi, NULL);
+        lv_screen_load(scr_wifi);
+        lvgl_port_unlock();
+        request_scan();
+    }
+    if (want_wifi_back) {
+        want_wifi_back = false;
+        if (wifi_open) { wifi_open = false; if (behind) show(behind); }
+    }
+    if (creds_pending && wifi_open) {
+        if (try_pending_creds()) { wifi_open = false; if (behind) show(behind); }
+    }
 }
 
 /* Saved network first; otherwise the Wi-Fi screen until a network works. */
@@ -212,14 +258,10 @@ static void net_task(void *arg)
 
         int idle_ms = 0;
         for (;;) {
-            if (want_wifi_screen) { want_wifi_screen = false; show(scr_wifi); request_scan(); }
-            if (!have_game && xTaskGetTickCount() - last_update_check > pdMS_TO_TICKS(UPDATE_CHECK_MS)) {
+            handle_wifi();
+            if (!have_game && xTaskGetTickCount() - last_update_check > pdMS_TO_TICKS(UPDATE_CHECK_MS) && !wifi_open) {
                 last_update_check = xTaskGetTickCount();   /* only between games */
-                if (!eg_ota_check_and_update(show_updating) && token[0]) show(scr_idle);
-            }
-            if (creds_pending) {                         /* switched networks from the menu */
-                if (try_pending_creds()) show(have_game ? scr_game : scr_idle);
-                continue;
+                if (!eg_ota_check_and_update(show_updating) && token[0]) show_main(scr_idle);
             }
             if (mailbox.pending && have_game) {
                 mailbox.pending = false;
@@ -236,14 +278,16 @@ static void net_task(void *arg)
                     apply_game(&g);
                 idle_ms = 10000;                         /* in a game: 10 s */
             } else if (r == EG_NO_GAME) {
-                if (have_game) { have_game = false; show(scr_idle); }
+                have_game = false;
+                if (behind != scr_idle) show_main(scr_idle);   /* also right after pairing */
                 idle_ms = 60000;                         /* idle: 60 s */
             } else {
                 idle_ms = 10000;
             }
             for (int waited = 0; waited < idle_ms; waited += 250) {
                 vTaskDelay(pdMS_TO_TICKS(250));
-                if (mailbox.pending || want_wifi_screen || creds_pending) break;   /* react to taps quickly */
+                handle_wifi();
+                if (mailbox.pending) break;   /* react to moves quickly */
             }
         }
         ESP_LOGW(TAG, "401: wiping token and re-pairing");
@@ -261,7 +305,8 @@ void app_main(void)
     if (!eg_bsp_init()) { ESP_LOGE(TAG, "display init failed"); return; }
 
     lvgl_port_lock(0);
-    scr_wifi = eg_wifi_create(NULL, on_wifi_connect, request_scan);
+    scr_wifi = eg_wifi_create(NULL, on_wifi_connect, request_scan, on_wifi_back);
+    eg_screens_set_wifi_handler(on_menu_wifi);
     scr_pair = eg_pair_create(NULL);
     scr_idle = eg_idle_create(NULL);
     eg_game_cb_t cb = {.on_move = on_move, .on_menu_forget = on_forget, .on_menu_wifi = on_menu_wifi};
