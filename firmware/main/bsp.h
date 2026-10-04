@@ -11,5 +11,10 @@ lv_display_t *eg_bsp_init(void);
 /* Wi-Fi comes up through the onboard ESP32-C6 (ESP-Hosted). Blocks until connected or timeout_ms. */
 bool eg_bsp_wifi_connect(const char *ssid, const char *pass, int timeout_ms);
 
+/* Nearby networks, strongest first, one entry per name, hidden networks skipped.
+ * Blocks for a few seconds. Returns how many were written to out (0 on failure). */
+typedef struct { char ssid[33]; int8_t rssi; bool open; } eg_ap_t;
+int eg_bsp_wifi_scan(eg_ap_t *out, int max);
+
 /* Backlight brightness 0..100 (0 = screen dark). Used for sleep. */
 void eg_bsp_backlight(uint8_t percent);

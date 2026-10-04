@@ -29,7 +29,11 @@ static lv_obj_t *label(lv_obj_t *p, const lv_font_t *f, lv_color_t c, const char
 
 /* ---------- Wi-Fi ---------- */
 
-typedef struct { lv_obj_t *ssid, *pass, *kb, *err; eg_wifi_cb_t cb; } wifi_t;
+typedef struct {
+    lv_obj_t *ssid, *pass, *kb, *err, *list;
+    eg_wifi_cb_t cb;
+    void (*rescan)(void);
+} wifi_t;
 
 static void focus_cb(lv_event_t *e)
 {
@@ -40,7 +44,29 @@ static void focus_cb(lv_event_t *e)
 static void connect_cb(lv_event_t *e)
 {
     wifi_t *w = lv_event_get_user_data(e);
+    if (!lv_textarea_get_text(w->ssid)[0]) { lv_label_set_text(w->err, "Pick a network first."); return; }
+    lv_label_set_text(w->err, "Connecting...");
     if (w->cb) w->cb(lv_textarea_get_text(w->ssid), lv_textarea_get_text(w->pass));
+}
+
+static void rescan_cb(lv_event_t *e)
+{
+    wifi_t *w = lv_event_get_user_data(e);
+    if (w->rescan) w->rescan();
+}
+
+static void pick_cb(lv_event_t *e)
+{
+    wifi_t *w = lv_event_get_user_data(e);
+    lv_obj_t *btn = lv_event_get_target(e);
+    lv_obj_t *lbl = lv_obj_get_child(btn, 0);
+    lv_textarea_set_text(w->ssid, lv_label_get_text(lbl));
+    lv_textarea_set_text(w->pass, "");
+    lv_label_set_text(w->err, "");
+    uint32_t n = lv_obj_get_child_count(w->list);
+    for (uint32_t i = 0; i < n; i++) lv_obj_remove_state(lv_obj_get_child(w->list, i), LV_STATE_CHECKED);
+    lv_obj_add_state(btn, LV_STATE_CHECKED);
+    lv_keyboard_set_textarea(w->kb, w->pass);                 /* keyboard jumps to the password */
 }
 
 static lv_obj_t *field(lv_obj_t *p, const char *placeholder, int y, bool pw, wifi_t *w)
@@ -57,38 +83,63 @@ static lv_obj_t *field(lv_obj_t *p, const char *placeholder, int y, bool pw, wif
     lv_obj_set_style_border_color(t, EG_CYAN, 0);
     lv_obj_set_style_border_width(t, 2, 0);
     lv_obj_add_event_cb(t, focus_cb, LV_EVENT_FOCUSED, w);
+    lv_obj_add_event_cb(t, focus_cb, LV_EVENT_CLICKED, w);
     return t;
 }
 
-lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect)
+static lv_obj_t *pill(lv_obj_t *p, const char *text, lv_color_t bg, int x, int y, int wdt, int h)
+{
+    lv_obj_t *b = lv_button_create(p);
+    lv_obj_set_size(b, wdt, h);
+    lv_obj_set_pos(b, x, y);
+    lv_obj_set_style_bg_color(b, bg, 0);
+    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+    lv_obj_center(label(b, &eg_sora_20_bold, lv_color_white(), text));
+    return b;
+}
+
+static void list_message(wifi_t *w, const char *msg)
+{
+    lv_obj_clean(w->list);
+    lv_obj_t *l = label(w->list, &eg_sora_16, EG_FG_HAZE, msg);
+    lv_obj_set_style_pad_all(l, 12, 0);
+}
+
+lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect, void (*on_rescan)(void))
 {
     lv_obj_t *s = base(parent);
     wifi_t *w = lv_malloc(sizeof *w);
     memset(w, 0, sizeof *w);
     w->cb = on_connect;
+    w->rescan = on_rescan;
     lv_obj_set_user_data(s, w);
 
     lv_obj_set_style_text_font(s, &eg_sora_20, 0);
     lv_obj_t *t = label(s, &eg_bungee_28, EG_CYAN, "CONNECT TO WI-FI");
-    lv_obj_set_pos(t, 40, 24);
+    lv_obj_set_pos(t, 40, 20);
+
+    /* left: name, password, connect */
     w->ssid = field(s, "Network name", 72, false, w);
-    w->pass = field(s, "Password", 132, true, w);
-
-    lv_obj_t *b = lv_button_create(s);
-    lv_obj_set_size(b, 200, 52);
-    lv_obj_set_pos(b, 40, 198);
-    lv_obj_set_style_bg_color(b, EG_PINK, 0);
-    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
-    lv_obj_add_event_cb(b, connect_cb, LV_EVENT_CLICKED, w);
-    lv_obj_center(label(b, &eg_sora_20_bold, lv_color_white(), "Connect"));
-
+    w->pass = field(s, "Password", 134, true, w);
+    lv_obj_add_event_cb(pill(s, "Connect", EG_PINK, 40, 198, 180, 48), connect_cb, LV_EVENT_CLICKED, w);
     w->err = label(s, &eg_sora_16, EG_MAGENTA, "");
-    lv_obj_set_pos(w->err, 260, 212);
+    lv_label_set_long_mode(w->err, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(w->err, 190);
+    lv_obj_set_pos(w->err, 232, 200);
 
-    lv_obj_t *hint = label(s, &eg_sora_16, EG_FG_HAZE, "Wi-Fi 2.4 or 5 GHz. Stored on this board only.");
-    lv_label_set_long_mode(hint, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(hint, 320);
-    lv_obj_set_pos(hint, 440, 82);
+    /* right: nearby networks */
+    w->list = lv_obj_create(s);
+    lv_obj_set_size(w->list, 320, 150);
+    lv_obj_set_pos(w->list, 440, 72);
+    lv_obj_set_flex_flow(w->list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_bg_color(w->list, EG_SURFACE, 0);
+    lv_obj_set_style_border_color(w->list, EG_CYAN, 0);
+    lv_obj_set_style_border_width(w->list, 2, 0);
+    lv_obj_set_style_pad_all(w->list, 4, 0);
+    lv_obj_set_style_pad_row(w->list, 4, 0);
+    lv_obj_set_scroll_dir(w->list, LV_DIR_VER);
+    list_message(w, "Searching...");
+    lv_obj_add_event_cb(pill(s, "Scan again", EG_SURFACE, 440, 228, 180, 44), rescan_cb, LV_EVENT_CLICKED, w);
 
     w->kb = lv_keyboard_create(s);
     lv_obj_set_size(w->kb, 800, 200);
@@ -97,7 +148,7 @@ lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect)
     lv_obj_set_style_text_color(w->kb, EG_FG, LV_PART_ITEMS);
     lv_obj_set_style_border_width(w->kb, 0, LV_PART_ITEMS);
     lv_obj_align(w->kb, LV_ALIGN_BOTTOM_MID, 0, 0);
-    lv_keyboard_set_textarea(w->kb, w->ssid);
+    lv_keyboard_set_textarea(w->kb, w->pass);
     return s;
 }
 
@@ -105,6 +156,49 @@ void eg_wifi_set_error(lv_obj_t *screen, const char *msg)
 {
     wifi_t *w = lv_obj_get_user_data(screen);
     lv_label_set_text(w->err, msg ? msg : "");
+}
+
+void eg_wifi_set_scanning(lv_obj_t *screen)
+{
+    list_message(lv_obj_get_user_data(screen), "Searching...");
+}
+
+void eg_wifi_set_networks(lv_obj_t *screen, const eg_ap_t *aps, int n)
+{
+    wifi_t *w = lv_obj_get_user_data(screen);
+    if (n == 0) { list_message(w, "No networks found."); return; }
+    lv_obj_clean(w->list);
+    const char *current = lv_textarea_get_text(w->ssid);
+    for (int i = 0; i < n; i++) {
+        lv_obj_t *b = lv_button_create(w->list);
+        lv_obj_set_width(b, LV_PCT(100));
+        lv_obj_set_height(b, 40);
+        lv_obj_set_style_radius(b, 6, 0);
+        lv_obj_set_style_shadow_width(b, 0, 0);
+        lv_obj_set_style_bg_color(b, EG_BG_STAGE, 0);
+        lv_obj_set_style_bg_color(b, EG_CYAN, LV_STATE_CHECKED);
+        lv_obj_set_style_text_color(b, EG_FG, 0);
+        lv_obj_set_style_text_color(b, EG_BG_VOID, LV_STATE_CHECKED);
+        lv_obj_t *l = label(b, &eg_sora_20, EG_FG, aps[i].ssid);
+        lv_obj_set_style_text_color(l, EG_FG, 0);
+        lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(l, 220);
+        lv_obj_align(l, LV_ALIGN_LEFT_MID, 4, 0);
+        /* signal: 4 bars, filled by strength */
+        int bars = aps[i].rssi > -55 ? 4 : aps[i].rssi > -65 ? 3 : aps[i].rssi > -75 ? 2 : 1;
+        for (int k = 0; k < 4; k++) {
+            lv_obj_t *bar = lv_obj_create(b);
+            lv_obj_remove_flag(bar, LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_size(bar, 5, 6 + k * 4);
+            lv_obj_set_style_border_width(bar, 0, 0);
+            lv_obj_set_style_radius(bar, 1, 0);
+            lv_obj_set_style_bg_color(bar, k < bars ? EG_CYAN : EG_FG_MIST, 0);
+            lv_obj_set_style_bg_opa(bar, k < bars ? LV_OPA_COVER : LV_OPA_30, 0);
+            lv_obj_align(bar, LV_ALIGN_BOTTOM_RIGHT, -4 - (3 - k) * 8, -8);
+        }
+        if (current[0] && strcmp(current, aps[i].ssid) == 0) lv_obj_add_state(b, LV_STATE_CHECKED);
+        lv_obj_add_event_cb(b, pick_cb, LV_EVENT_CLICKED, w);
+    }
 }
 
 /* ---------- pairing ---------- */

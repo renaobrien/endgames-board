@@ -55,6 +55,31 @@ static void on_forget(void)
     esp_restart();
 }
 
+/* ---------- Wi-Fi scan (own task: a scan blocks for a few seconds) ---------- */
+
+static TaskHandle_t scan_task_h;
+
+static void scan_task(void *arg)
+{
+    (void)arg;
+    static eg_ap_t aps[20];
+    for (;;) {
+        ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+        lvgl_port_lock(0);
+        eg_wifi_set_scanning(scr_wifi);
+        lvgl_port_unlock();
+        int n = eg_bsp_wifi_scan(aps, 20);
+        lvgl_port_lock(0);
+        eg_wifi_set_networks(scr_wifi, aps, n);
+        lvgl_port_unlock();
+    }
+}
+
+static void request_scan(void)
+{
+    if (scan_task_h) xTaskNotifyGive(scan_task_h);
+}
+
 static void on_menu_wifi(void)
 {
     want_wifi_screen = true;
@@ -110,7 +135,7 @@ static void net_task(void *arg)
 
         int idle_ms = 0;
         for (;;) {
-            if (want_wifi_screen) { want_wifi_screen = false; show(scr_wifi); }
+            if (want_wifi_screen) { want_wifi_screen = false; show(scr_wifi); request_scan(); }
             if (mailbox.pending && have_game) {
                 mailbox.pending = false;
                 eg_game_t next;
@@ -151,12 +176,13 @@ void app_main(void)
     if (!eg_bsp_init()) { ESP_LOGE(TAG, "display init failed"); return; }
 
     lvgl_port_lock(0);
-    scr_wifi = eg_wifi_create(NULL, on_wifi_connect);
+    scr_wifi = eg_wifi_create(NULL, on_wifi_connect, request_scan);
     scr_pair = eg_pair_create(NULL);
     scr_idle = eg_idle_create(NULL);
     eg_game_cb_t cb = {.on_move = on_move, .on_menu_forget = on_forget, .on_menu_wifi = on_menu_wifi};
     scr_game = eg_game_create(NULL, &cb);
     lvgl_port_unlock();
+    xTaskCreate(scan_task, "scan", 10 * 1024, NULL, 4, &scan_task_h);
 
     char ssid[33] = {0}, pass[65] = {0};
 #ifdef EG_DEV_WIFI_SSID
@@ -166,6 +192,7 @@ void app_main(void)
 #endif
     if (!ssid[0] || !eg_bsp_wifi_connect(ssid, pass, 20000)) {
         show(scr_wifi);
+        request_scan();
         if (ssid[0]) { lvgl_port_lock(0); eg_wifi_set_error(scr_wifi, "Could not connect. Check the name and password."); lvgl_port_unlock(); }
         return;                         /* on_wifi_connect saves and restarts */
     }

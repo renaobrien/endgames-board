@@ -17,6 +17,7 @@
 #include "bsp.h"
 
 #include <string.h>
+#include <stdlib.h>
 #include "esp_log.h"
 #include "esp_check.h"
 #include "esp_ldo_regulator.h"
@@ -187,11 +188,14 @@ lv_display_t *eg_bsp_init(void)
 static EventGroupHandle_t s_wifi_ev;
 static int s_retries;
 
+static volatile bool s_connecting;   /* only auto-connect on STA_START when a connect was asked for */
+
 static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
 {
     if (base == WIFI_EVENT && id == WIFI_EVENT_STA_START) {
-        esp_wifi_connect();
+        if (s_connecting) esp_wifi_connect();
     } else if (base == WIFI_EVENT && id == WIFI_EVENT_STA_DISCONNECTED) {
+        if (!s_connecting) return;
         if (s_retries++ < 5) esp_wifi_connect();
         else xEventGroupSetBits(s_wifi_ev, WIFI_FAILED);
     } else if (base == IP_EVENT && id == IP_EVENT_STA_GOT_IP) {
@@ -200,23 +204,73 @@ static void wifi_event(void *arg, esp_event_base_t base, int32_t id, void *data)
     }
 }
 
+static bool s_wifi_inited, s_wifi_running;
+
+static bool wifi_init_once(void)
+{
+    if (s_wifi_inited) return true;
+    s_wifi_ev = xEventGroupCreate();
+    ESP_ERROR_CHECK(esp_netif_init());
+    ESP_ERROR_CHECK(esp_event_loop_create_default());
+    esp_netif_create_default_wifi_sta();
+    wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
+    if (esp_wifi_init(&init) != ESP_OK) { ESP_LOGE(TAG, "wifi init failed (is the C6 running ESP-Hosted?)"); return false; }
+    esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event, NULL, NULL);
+    esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event, NULL, NULL);
+    esp_wifi_set_mode(WIFI_MODE_STA);
+    s_wifi_inited = true;
+    return true;
+}
+
+static int ap_cmp(const void *a, const void *b)
+{
+    return ((const eg_ap_t *)b)->rssi - ((const eg_ap_t *)a)->rssi;
+}
+
+int eg_bsp_wifi_scan(eg_ap_t *out, int max)
+{
+    if (!wifi_init_once()) return 0;
+    if (!s_wifi_running) {
+        if (esp_wifi_start() != ESP_OK) return 0;
+        s_wifi_running = true;
+    }
+    if (esp_wifi_scan_start(NULL, true) != ESP_OK) { ESP_LOGW(TAG, "scan failed"); return 0; }
+    uint16_t n = 0;
+    esp_wifi_scan_get_ap_num(&n);
+    if (n == 0) return 0;
+    if (n > 40) n = 40;
+    wifi_ap_record_t *recs = calloc(n, sizeof *recs);
+    if (!recs) { esp_wifi_clear_ap_list(); return 0; }
+    esp_wifi_scan_get_ap_records(&n, recs);
+    int count = 0;
+    for (int i = 0; i < n && count < max; i++) {
+        const char *name = (const char *)recs[i].ssid;
+        if (!name[0]) continue;                                   /* hidden network */
+        bool dup = false;
+        for (int j = 0; j < count; j++) {
+            if (strcmp(out[j].ssid, name) == 0) {               /* same name on 2.4 and 5 GHz, or mesh nodes */
+                if (recs[i].rssi > out[j].rssi) out[j].rssi = recs[i].rssi;
+                dup = true;
+                break;
+            }
+        }
+        if (dup) continue;
+        strncpy(out[count].ssid, name, sizeof out[count].ssid - 1);
+        out[count].ssid[sizeof out[count].ssid - 1] = 0;
+        out[count].rssi = recs[i].rssi;
+        out[count].open = recs[i].authmode == WIFI_AUTH_OPEN;
+        count++;
+    }
+    free(recs);
+    qsort(out, count, sizeof *out, ap_cmp);
+    return count;
+}
+
 bool eg_bsp_wifi_connect(const char *ssid, const char *pass, int timeout_ms)
 {
-    static bool started = false;
-    if (!started) {
-        s_wifi_ev = xEventGroupCreate();
-        ESP_ERROR_CHECK(esp_netif_init());
-        ESP_ERROR_CHECK(esp_event_loop_create_default());
-        esp_netif_create_default_wifi_sta();
-        wifi_init_config_t init = WIFI_INIT_CONFIG_DEFAULT();
-        if (esp_wifi_init(&init) != ESP_OK) { ESP_LOGE(TAG, "wifi init failed (is the C6 running ESP-Hosted?)"); return false; }
-        esp_event_handler_instance_register(WIFI_EVENT, ESP_EVENT_ANY_ID, wifi_event, NULL, NULL);
-        esp_event_handler_instance_register(IP_EVENT, IP_EVENT_STA_GOT_IP, wifi_event, NULL, NULL);
-        esp_wifi_set_mode(WIFI_MODE_STA);
-        started = true;
-    } else {
-        esp_wifi_stop();
-    }
+    if (!wifi_init_once()) return false;
+    if (s_wifi_running) { esp_wifi_stop(); s_wifi_running = false; }
+    s_connecting = true;
     xEventGroupClearBits(s_wifi_ev, WIFI_GOT_IP | WIFI_FAILED);
     s_retries = 0;
 
@@ -226,6 +280,7 @@ bool eg_bsp_wifi_connect(const char *ssid, const char *pass, int timeout_ms)
     wc.sta.threshold.authmode = (pass && pass[0]) ? WIFI_AUTH_WPA2_PSK : WIFI_AUTH_OPEN;
     esp_wifi_set_config(WIFI_IF_STA, &wc);
     if (esp_wifi_start() != ESP_OK) return false;
+    s_wifi_running = true;
 
     EventBits_t bits = xEventGroupWaitBits(s_wifi_ev, WIFI_GOT_IP | WIFI_FAILED, pdFALSE, pdFALSE, pdMS_TO_TICKS(timeout_ms));
     bool ok = bits & WIFI_GOT_IP;

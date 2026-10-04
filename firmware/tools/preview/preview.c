@@ -74,7 +74,9 @@ int main(int argc, char **argv)
         lv_obj_t *p = eg_pair_create(lv_screen_active());
         eg_pair_set_code(p, "K7XQ2M", "endgam.es/board/pair");
     } else if (strcmp(which, "wifi") == 0) {
-        eg_wifi_create(lv_screen_active(), NULL);
+        lv_obj_t *w = eg_wifi_create(lv_screen_active(), NULL, NULL);
+        eg_ap_t aps[] = {{"Renas Wifi", -48, false}, {"NETGEAR-5G", -61, false}, {"xfinitywifi", -70, true}, {"Coffee Shop Guest Network Long Name", -82, false}};
+        eg_wifi_set_networks(w, aps, 4);
     } else if (strcmp(which, "idle") == 0) {
         eg_idle_create(lv_screen_active());
     } else {
