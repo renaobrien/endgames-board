@@ -1,6 +1,8 @@
 # Endgames Board: flat template to check the 4 corner holes, the USB-C port the case uses, and the power slider slot.
 # Lay the board SCREEN DOWN on it, USB-C edge against the short wall,
 # UART1/I2C edge on the side with the notch.
+# Geometry below uses the case's screen-up numbers, then the frame is mirrored across its width,
+# because laying the board screen down flips it. (First print skipped this and came out backwards.)
 import trimesh
 from trimesh.creation import box as _box, cylinder as _cyl
 def box(x0,y0,z0,x1,y1,z1):
@@ -23,6 +25,10 @@ cuts.append(box(L/2-4,-1,-1,L/2+4,3,T+1))          # notch marks the UART1/I2C e
 # back is 5.1 mm above the plate when screen down. Slot length = arm width 4 + max travel 6.1.
 cuts.append(box(-CLR-WALL-1,18.62-(4+7.7)/2-0.4,T+5.1+3.73-0.4,-CLR+1,18.62+(4+7.7)/2+0.4,T+5.1+6.13+0.4))
 t=D(t,U(cuts))
+import numpy as np
+m=np.eye(4); m[1,1]=-1; m[1,3]=W                         # mirror y -> W-y (screen down)
+t.apply_transform(m)
+if t.volume<0: t.invert()
 print(t.is_watertight,[round(v,1) for v in t.extents], round(t.volume/1000,1),'cm3')
 # Slider extender printed alongside, in the open middle of the frame (socket facing up).
 # Same part as case/power-slider-extender.stl, but its arm only needs to reach past this template's wall.
