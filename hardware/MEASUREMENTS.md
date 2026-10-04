@@ -12,6 +12,11 @@ Measured by hand with calipers (2026-10-04) unless marked otherwise. "Back view"
 | Thickness, deepest part (connectors on back, no battery) | 16.5 mm (0.65") | Caliper |
 | Visible screen glass, long side | 119 mm (4.7") | Caliper |
 | PCB lip around the glass | about 5 mm (0.2") per side | Caliper |
+| Screen glass, short side | 75.8 mm (2.9845") | Caliper |
+| Black border on the glass, top | 2.5 mm (0.1") | Caliper |
+| Black border on the glass, bottom | 7.6 mm (0.3") | Caliper. Wider side is where the display's ribbon cable enters |
+| Black border on the glass, left and right | 5.1 mm (0.2") each | Caliper |
+| Lit display area (derived) | about 109 x 66 mm | Glass minus borders. Matches Elecrow's 108 x 65 mm spec |
 | Mounting holes | 4, one per corner, on the PCB lip outside the glass | Visual |
 | Hole diameter | 2.5 mm (0.10"), fits M2.5 screws | Caliper |
 | Hole center from edges | about 3.5 mm from both edges | Estimated from photo. Confirm with the test-fit plate |
@@ -29,6 +34,12 @@ Measured by hand with calipers (2026-10-04) unless marked otherwise. "Back view"
 | Inset, bottom | BAT, SPKR connectors | No cutout; cable routes inside the case |
 | Front | Status LEDs CHG/PWR near the USB ports | Optional light pipe |
 
+## Front window
+
+The lit area is not centered top to bottom: it sits about 2.5 mm toward the thin-border edge. The case's front window follows the lit area, not the glass, or one edge shows a fat black strip.
+
 ## Open
+
+- Which long edge has the 0.3" border (the microSD/battery-connector edge or the UART1/I2C edge). The front window offset depends on it.
 
 - Hole-center positions: print the test-fit plate (`hardware/test-fit-plate.scad`) and check the screws line up before printing the full case.
