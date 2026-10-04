@@ -1,4 +1,4 @@
-# Endgames Board: flat template to check the 4 corner holes and the 2 USB-C ports.
+# Endgames Board: flat template to check the 4 corner holes and the USB-C port the case uses.
 # Lay the board SCREEN DOWN on it, USB-C edge against the short wall,
 # UART1/I2C edge on the side with the notch.
 import trimesh
@@ -16,10 +16,9 @@ base=box(-CLR-WALL,0,0,0.01,W,T)                       # joins wall to plate
 t=U([plate,wall,base])
 cuts=[cyl(x,y,-1,T+1,2.7) for x in (HOLE_IN,L-HOLE_IN) for y in (HOLE_IN,W-HOLE_IN)]
 # Screen down: glass+PCB = 5.1 mm, USB-C receptacle (3.3 mm tall) sits on top, center about 6.8 mm up.
-for y in (30.5,47.8):
+for y in (47.8,):                                   # only the USB-C the case uses (USB2.0)
     cuts.append(box(-CLR-WALL-1,y-5.0,6.9-2.2,-CLR+1,y+5.0,6.9+2.2))   # 10 x 4.4 mm window, real port is about 9 x 3.3
 cuts.append(box(L/2-4,-1,-1,L/2+4,3,T+1))          # notch marks the UART1/I2C edge
-cuts.append(box(-CLR-WALL-1,53,-1,-CLR+1,72,20))      # gap for the white 5V connector that overhangs the edge
 t=D(t,U(cuts))
 print(t.is_watertight,[round(v,1) for v in t.extents], round(t.volume/1000,1),'cm3')
 t.export('template.stl')

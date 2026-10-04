@@ -25,7 +25,7 @@ Measured by hand with calipers (2026-10-04) unless marked otherwise. "Back view"
 
 - Order along that edge, from the 5V-in end: white UART3-IN connector, USB-C (USB2.0), USB-C (UART0), power slider.
 - USB-C shells sit about 1.8 mm off the board and overhang the edge about 1 mm. The case and template allow 1.6 mm on that side.
-- The white UART3-IN connector overhangs the edge about 5 mm. The case wall and template wall are open there.
+- The white UART3-IN connector stays inside the case (Rena confirmed it does not stick out past the edge).
 
 ## Things on the edges (back view, USB ports on the right)
 
