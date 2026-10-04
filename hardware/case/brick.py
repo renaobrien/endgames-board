@@ -33,12 +33,12 @@ win=(gx+5.08+0.3, gy+2.54+0.3, L-gx-5.08-0.3, W-gy-7.62-0.3)
 # ---------- tray ----------
 tray=box(0,0,0,OX,OY,LID_Z)
 tray=D(tray, box(WALL,WALL,FLOOR,OX-WALL,OY-WALL,LID_Z+1))
-bosses=[cyl(CX+x,C+y,FLOOR-0.01,PCB_BOT,6.5) for x,y in holes]
+bosses=[cyl(CX+x,C+y,FLOOR-0.01,PCB_BOT,7.0) for x,y in holes]
 tray=U([tray]+bosses)
 cuts=[]
-for x,y in holes:                       # M2.5 screw from below: clearance + head counterbore
-    cuts.append(cyl(CX+x,C+y,-1,PCB_BOT+1,2.9))
-    cuts.append(cyl(CX+x,C+y,-1,2.6,5.2))
+for x,y in holes:                       # M3 screw from below: 3.5 clearance (prints ~3.3) + head counterbore. Board holes measured 3.39 mm.
+    cuts.append(cyl(CX+x,C+y,-1,PCB_BOT+1,3.5))
+    cuts.append(cyl(CX+x,C+y,-1,2.6,6.0))
 z_conn=PCB_BOT-1.8                       # connectors hang under the PCB
 for y in (48.57,):                        # only the lower USB-C (USB2.0, power). UART0 stays closed: it sits next to the power slider and is only needed for flashing, done with the case open
     cuts.append(box(-1,C+y-6.5,z_conn-4,WALL+1,C+y+6.5,z_conn+4))
@@ -63,7 +63,7 @@ lip=box(WALL+0.25,WALL+0.25,LID_Z-1.5,OX-WALL-0.25,OY-WALL-0.25,LID_Z+0.01)   # 
 lip=D(lip,box(WALL+1.85,WALL+1.85,LID_Z-2,OX-WALL-1.85,OY-WALL-1.85,LID_Z+1))
 lb=[cyl(CX+x,C+y,PCB_TOP,LID_Z+0.01,6.0) for x,y in holes]
 lid=U([lid,lip]+lb)
-lid=D(lid,U([box(CX+win[0],C+win[1],LID_Z-3,CX+win[2],C+win[3],TOP+1)]+[cyl(CX+x,C+y,PCB_TOP-1,LID_Z+0.5,2.2) for x,y in holes]))
+lid=D(lid,U([box(CX+win[0],C+win[1],LID_Z-3,CX+win[2],C+win[3],TOP+1)]+[cyl(CX+x,C+y,PCB_TOP-1,LID_Z+0.5,2.6) for x,y in holes]))   # 2.6 = M3 pilot, the screw cuts its own thread in the lid post
 
 for name,m in (('case-tray',tray),('case-lid',lid)):
     print(name, m.is_watertight, [round(v,1) for v in m.extents])

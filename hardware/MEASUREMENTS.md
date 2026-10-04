@@ -12,7 +12,7 @@
 | BOOT / RESET (K3 / K4) | 4.2 mm in from the opposite short edge, 46.5 / 53.0 mm from the UART1/I2C edge |
 | 2x8 header (J7) | center 55.6 mm along, 6.6 mm from the microSD edge |
 
-Note: a caliper read the holes as 2.5 mm (0.10"); the design file says 3.2 mm. The template uses 3.4 mm clearance holes and M3 screws. If M3 doesn't fit, switch back to M2.5.
+Note: caliper on 2026-10-04 read the board holes as 3.39 mm (0.1335"). M3 screws. Case tray holes 3.5 mm clearance, lid posts 2.6 mm pilot.
 
 ## Earlier hand measurements
 
@@ -34,7 +34,7 @@ Measured by hand with calipers (2026-10-04) unless marked otherwise. "Back view"
 | Black border on the glass, left and right | 5.1 mm (0.2") each | Caliper |
 | Lit display area (derived) | about 109 x 66 mm | Glass minus borders. Matches Elecrow's 108 x 65 mm spec |
 | Mounting holes | 4, one per corner, on the PCB lip outside the glass | Visual |
-| Hole diameter | 2.5 mm (0.10"), fits M2.5 screws | Caliper |
+| Hole diameter | 3.39 mm (0.1335"), M3 | Caliper |
 | Hole center from edges | about 3.5 mm from both edges | Estimated from photo. Confirm with the test-fit plate |
 
 ## From the side photo of the USB-C edge
