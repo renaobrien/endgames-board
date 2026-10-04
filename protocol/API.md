@@ -119,6 +119,80 @@ Optional query: `?gameId=uuid` to use the piece set you have in that game. Witho
 
 Twelve PNGs, 60x60, transparent background. Keys are color (`w`/`b`) plus piece (`k q r b n p`). Black pieces match the website: the same art darkened with a thin light halo. The URLs are public and permanent per set, so download once per set and cache on flash or SD. The first call for a set can take a few seconds while the server resizes and caches the images. Fetch again when `set.id` changes.
 
+## Home, new games and sets (v1 additions)
+
+The board is a full Endgames client: it starts games, lists them, and switches piece sets, the same as the website. These are additive v1 endpoints.
+
+### Home screen: `GET /board-home`
+
+One call for the home screen.
+
+```json
+200 {
+  "apiVersion": 1,
+  "profile": { "name": "deltajuliet", "elo": 1240, "ranked": true },
+  "games": [
+    {
+      "id": "uuid",
+      "opponent": { "name": "Stockfish", "isAi": true, "difficulty": "intermediate" },
+      "yourColor": "white",
+      "yourTurn": true,
+      "status": "IN_PROGRESS",
+      "moveCount": 14,
+      "updatedAt": "2026-10-04T19:30:00Z"
+    }
+  ],
+  "activeSetId": "uuid-or-default",
+  "sets": [ { "id": "uuid-or-default", "name": "Default", "kind": "default" } ]
+}
+```
+
+`games` holds your in-progress games (against people and the computer), your-turn first, then most recently updated, up to 20. `elo` is `null` and `ranked` false before the first ranked game.
+
+### Start a game: `POST /board-new-game`
+
+Against the computer:
+
+```json
+{ "mode": "ai", "difficulty": "beginner", "color": "white" }
+```
+
+`difficulty` is `beginner`, `intermediate`, `advanced` or `expert` (shown as Easy, Medium, Hard, Expert). `color` is `white`, `black` or `random`. Returns `200 { "apiVersion": 1, "game": { ... } }` in the `board-game` shape. If the computer plays white, its first move is already made.
+
+Challenge a friend:
+
+```json
+{ "mode": "challenge", "color": "random" }
+```
+
+Creates an open challenge with your active set and returns:
+
+```json
+200 { "apiVersion": 1, "challenge": { "id": "uuid", "url": "https://endgam.es/?challenge=uuid", "expiresAt": "..." } }
+```
+
+The board shows `url` as a QR. When someone accepts, the game appears in `board-home` and `board-game`.
+
+### Games against the computer
+
+`board-game` and `board-game?gameId=` include computer games. After you move with `board-move`, the server makes the computer's reply before responding, so the returned `game` already includes it (or, if that takes longer than the request allows, the reply appears on the next `board-game` poll). Difficulty matches the website.
+
+### Resign: `POST /board-resign`
+
+```json
+{ "gameId": "uuid" }
+```
+
+Returns the finished `game`.
+
+### Switch piece set: `POST /board-set`
+
+```json
+{ "setId": "uuid-or-default" }
+```
+
+Sets your active set (the same one the website uses). `board-pieces` then returns it.
+
 ## Versioning
 
 Breaking changes get a new version number and run alongside the old one for at least 6 months. Adding a new field doesn't count as breaking, so ignore fields you don't recognize.
