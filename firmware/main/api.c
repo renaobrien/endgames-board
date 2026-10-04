@@ -201,6 +201,123 @@ eg_result_t eg_api_pieces(const char *token, char set_id[48], char urls[12][160]
     return r;
 }
 
+/* ---------- home, new games, sets ---------- */
+
+static eg_result_t game_reply(int st, char *body, eg_game_t *out)
+{
+    eg_result_t r = EG_ERROR;
+    if (st == 401) r = EG_UNAUTHORIZED;
+    else if (st == 200 && body) {
+        cJSON *j = cJSON_Parse(body);
+        r = parse_game(cJSON_GetObjectItem(j, "game"), out) ? EG_OK : EG_NO_GAME;
+        cJSON_Delete(j);
+    }
+    heap_caps_free(body);
+    return r;
+}
+
+eg_result_t eg_api_home(const char *token, eg_home_t *out)
+{
+    memset(out, 0, sizeof *out);
+    out->elo = -1;
+    char *body = NULL;
+    int st = request(HTTP_METHOD_GET, "board-home", token, NULL, &body);
+    eg_result_t r = EG_ERROR;
+    if (st == 401) r = EG_UNAUTHORIZED;
+    else if (st == 200 && body) {
+        cJSON *j = cJSON_Parse(body);
+        const cJSON *prof = cJSON_GetObjectItem(j, "profile");
+        copy_str(out->name, sizeof out->name, cJSON_GetObjectItem(prof, "name"));
+        const cJSON *elo = cJSON_GetObjectItem(prof, "elo");
+        if (cJSON_IsNumber(elo) && cJSON_IsTrue(cJSON_GetObjectItem(prof, "ranked"))) out->elo = elo->valueint;
+        const cJSON *g;
+        cJSON_ArrayForEach(g, cJSON_GetObjectItem(j, "games")) {
+            if (out->n_games >= EG_HOME_MAX_GAMES) break;
+            eg_home_game_t *h = &out->games[out->n_games];
+            copy_str(h->id, sizeof h->id, cJSON_GetObjectItem(g, "id"));
+            const cJSON *opp = cJSON_GetObjectItem(g, "opponent");
+            copy_str(h->opponent, sizeof h->opponent, cJSON_GetObjectItem(opp, "name"));
+            h->opponent_ai = cJSON_IsTrue(cJSON_GetObjectItem(opp, "isAi"));
+            copy_str(h->difficulty, sizeof h->difficulty, cJSON_GetObjectItem(opp, "difficulty"));
+            const cJSON *col = cJSON_GetObjectItem(g, "yourColor");
+            h->your_color = cJSON_IsString(col) && col->valuestring[0] == 'b' ? 'b' : 'w';
+            h->your_turn = cJSON_IsTrue(cJSON_GetObjectItem(g, "yourTurn"));
+            const cJSON *mc = cJSON_GetObjectItem(g, "moveCount");
+            h->move_count = cJSON_IsNumber(mc) ? mc->valueint : 0;
+            if (h->id[0]) out->n_games++;
+        }
+        copy_str(out->active_set, sizeof out->active_set, cJSON_GetObjectItem(j, "activeSetId"));
+        const cJSON *st2;
+        cJSON_ArrayForEach(st2, cJSON_GetObjectItem(j, "sets")) {
+            if (out->n_sets >= EG_HOME_MAX_SETS) break;
+            eg_set_t *e = &out->sets[out->n_sets];
+            copy_str(e->id, sizeof e->id, cJSON_GetObjectItem(st2, "id"));
+            copy_str(e->name, sizeof e->name, cJSON_GetObjectItem(st2, "name"));
+            if (e->id[0]) out->n_sets++;
+        }
+        r = EG_OK;
+        cJSON_Delete(j);
+    }
+    heap_caps_free(body);
+    return r;
+}
+
+eg_result_t eg_api_game_id(const char *token, const char *game_id, eg_game_t *out)
+{
+    char path[96];
+    snprintf(path, sizeof path, "board-game?gameId=%s", game_id);
+    char *body = NULL;
+    int st = request(HTTP_METHOD_GET, path, token, NULL, &body);
+    return game_reply(st, body, out);
+}
+
+eg_result_t eg_api_new_ai(const char *token, const char *difficulty, const char *color, eg_game_t *out)
+{
+    char req[128];
+    snprintf(req, sizeof req, "{\"mode\":\"ai\",\"difficulty\":\"%s\",\"color\":\"%s\"}", difficulty, color);
+    char *body = NULL;
+    int st = request(HTTP_METHOD_POST, "board-new-game", token, req, &body);
+    return game_reply(st, body, out);
+}
+
+eg_result_t eg_api_new_challenge(const char *token, const char *color, char url[160])
+{
+    char req[96];
+    snprintf(req, sizeof req, "{\"mode\":\"challenge\",\"color\":\"%s\"}", color);
+    char *body = NULL;
+    int st = request(HTTP_METHOD_POST, "board-new-game", token, req, &body);
+    eg_result_t r = EG_ERROR;
+    url[0] = 0;
+    if (st == 401) r = EG_UNAUTHORIZED;
+    else if (st == 200 && body) {
+        cJSON *j = cJSON_Parse(body);
+        copy_str(url, 160, cJSON_GetObjectItem(cJSON_GetObjectItem(j, "challenge"), "url"));
+        r = strncmp(url, "https://", 8) == 0 ? EG_OK : EG_ERROR;
+        cJSON_Delete(j);
+    }
+    heap_caps_free(body);
+    return r;
+}
+
+eg_result_t eg_api_resign(const char *token, const char *game_id, eg_game_t *out)
+{
+    char req[96];
+    snprintf(req, sizeof req, "{\"gameId\":\"%s\"}", game_id);
+    char *body = NULL;
+    int st = request(HTTP_METHOD_POST, "board-resign", token, req, &body);
+    return game_reply(st, body, out);
+}
+
+eg_result_t eg_api_set(const char *token, const char *set_id)
+{
+    char req[96];
+    snprintf(req, sizeof req, "{\"setId\":\"%s\"}", set_id);
+    char *body = NULL;
+    int st = request(HTTP_METHOD_POST, "board-set", token, req, &body);
+    heap_caps_free(body);
+    return st == 200 ? EG_OK : st == 401 ? EG_UNAUTHORIZED : EG_ERROR;
+}
+
 void *eg_http_download(const char *url, size_t *len)
 {
     body_t b = {0};

@@ -74,12 +74,22 @@ int main(int argc, char **argv)
         lv_obj_t *p = eg_pair_create(lv_screen_active());
         eg_pair_set_code(p, "K7XQ2M", "endgam.es/board/pair");
     } else if (strcmp(which, "wifi") == 0) {
-        lv_obj_t *w = eg_wifi_create(lv_screen_active(), NULL, NULL);
+        lv_obj_t *w = eg_wifi_create(lv_screen_active(), NULL, NULL, NULL);
         eg_ap_t aps[] = {{"Renas Wifi", -48, false}, {"NETGEAR-5G", -61, false}, {"xfinitywifi", -70, true}, {"Coffee Shop Guest Wifi", -82, false}};
         eg_wifi_set_networks(w, aps, 4);
         if (argc > 3) lv_dropdown_open(lv_obj_get_child(w, 1));
-    } else if (strcmp(which, "idle") == 0) {
-        eg_idle_create(lv_screen_active());
+    } else if (strcmp(which, "idle") == 0 || strcmp(which, "home") == 0 || strcmp(which, "sets") == 0) {
+        static eg_home_t h = {.name = "deltajuliet", .elo = 1240, .n_games = 3, .active_set = "s1", .n_sets = 3,
+            .games = {{"g1", "Stockfish", true, "intermediate", 'w', true, 14},
+                      {"g2", "magnus_fan", false, "", 'b', false, 22},
+                      {"g3", "Stockfish", true, "expert", 'b', false, 3}},
+            .sets = {{"default", "Default"}, {"s1", "Vaporwave Rena"}, {"s2", "Jon Bo"}}};
+        if (strcmp(which, "sets") == 0) eg_sets_set(eg_sets_create(lv_screen_active(), NULL, NULL), &h);
+        else { eg_home_cb_t cb = {0}; eg_home_set(eg_home_create(lv_screen_active(), &cb), &h); }
+    } else if (strcmp(which, "ai") == 0) {
+        eg_ai_setup_create(lv_screen_active(), NULL, NULL);
+    } else if (strcmp(which, "challenge") == 0) {
+        eg_challenge_set(eg_challenge_create(lv_screen_active(), NULL), "https://endgam.es/?challenge=7f3c2a1e-9b8d-4c6f-a5e2-1d0b9c8a7f6e", "Waiting for them to join...");
     } else {
         eg_game_cb_t cb = {.on_move = nop_move};
         lv_obj_t *scr = eg_game_create(lv_screen_active(), &cb);

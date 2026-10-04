@@ -302,10 +302,30 @@ static void flip_cb(lv_event_t *e)
     redraw_board(u);
 }
 
+/* Resign needs a second tap within 3 s, so a stray touch can't end the game. */
+static uint32_t resign_armed_at;
+static void resign_restore(lv_timer_t *t)
+{
+    lv_obj_t *btn = lv_timer_get_user_data(t);
+    lv_label_set_text(lv_obj_get_child(btn, 0), "Resign");
+    resign_armed_at = 0;
+}
+
 static void resign_cb(lv_event_t *e)
 {
     ui_t *u = U(lv_event_get_user_data(e));
-    if (u->cb.on_resign) u->cb.on_resign();
+    lv_obj_t *btn = lv_event_get_current_target(e);
+    uint32_t now = lv_tick_get();
+    if (resign_armed_at && now - resign_armed_at < 3000) {
+        resign_armed_at = 0;
+        lv_label_set_text(lv_obj_get_child(btn, 0), "Resign");
+        if (u->cb.on_resign) u->cb.on_resign();
+        return;
+    }
+    resign_armed_at = now;
+    lv_label_set_text(lv_obj_get_child(btn, 0), "Tap again");
+    lv_timer_t *t = lv_timer_create(resign_restore, 3000, btn);
+    lv_timer_set_repeat_count(t, 1);
 }
 
 static void menu_item_cb(lv_event_t *e)
@@ -314,6 +334,7 @@ static void menu_item_cb(lv_event_t *e)
     ui_t *u = U(screen);
     int which = (int)(intptr_t)lv_obj_get_user_data(lv_event_get_target(e));
     close_overlay(&u->menu);
+    if (which == 0 && u->cb.on_menu_home) u->cb.on_menu_home();
     if (which == 1 && u->cb.on_menu_wifi) u->cb.on_menu_wifi();
     if (which == 2 && u->cb.on_menu_forget) u->cb.on_menu_forget();
 }
@@ -325,15 +346,15 @@ static void menu_cb(lv_event_t *e)
     if (u->menu) { close_overlay(&u->menu); return; }
     u->menu = lv_obj_create(screen);
     plain(u->menu);
-    lv_obj_set_size(u->menu, 240, 170);
+    lv_obj_set_size(u->menu, 240, 226);
     lv_obj_align(u->menu, LV_ALIGN_BOTTOM_RIGHT, -PAD, -84);
     lv_obj_set_style_bg_color(u->menu, EG_SURFACE, 0);
     lv_obj_set_style_bg_opa(u->menu, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(u->menu, 3, 0);
     lv_obj_set_style_border_color(u->menu, EG_PINK, 0);
     lv_obj_set_style_radius(u->menu, 18, 0);
-    static const char *items[3] = {"Close", "Wi-Fi settings", "Forget this board"};
-    for (int i = 0; i < 3; i++) {
+    static const char *items[4] = {"Home", "Wi-Fi settings", "Forget this board", "Close"};
+    for (int i = 0; i < 4; i++) {
         lv_obj_t *b = lv_obj_create(u->menu);
         plain(b);
         lv_obj_set_size(b, 240, 56);

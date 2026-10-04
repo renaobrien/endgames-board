@@ -167,6 +167,8 @@ typedef struct {
     kbd_t *k;
     eg_wifi_cb_t cb;
     void (*rescan)(void);
+    void (*back)(void);
+    lv_obj_t *back_btn;
     bool have_list;          /* dropdown holds real networks (not "Searching...") */
 } wifi_t;
 
@@ -236,6 +238,13 @@ static void show_cb(lv_event_t *e)
 
 static void connect_cb(lv_event_t *e) { do_connect(lv_event_get_user_data(e)); }
 
+static void back_cb(lv_event_t *e)
+{
+    wifi_t *w = lv_event_get_user_data(e);
+    lv_label_set_text(w->err, "");
+    if (w->back) w->back();
+}
+
 static void rescan_cb(lv_event_t *e)
 {
     wifi_t *w = lv_event_get_user_data(e);
@@ -288,13 +297,14 @@ static lv_obj_t *pill(lv_obj_t *p, const char *text, lv_color_t bg, int x, int y
     return b;
 }
 
-lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect, void (*on_rescan)(void))
+lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect, void (*on_rescan)(void), void (*on_back)(void))
 {
     lv_obj_t *s = base(parent);
     wifi_t *w = lv_malloc(sizeof *w);
     memset(w, 0, sizeof *w);
     w->cb = on_connect;
     w->rescan = on_rescan;
+    w->back = on_back;
     lv_obj_set_user_data(s, w);
 
     lv_obj_set_style_text_font(s, &eg_sora_20, 0);
@@ -354,9 +364,35 @@ lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect, void (*on_re
     lv_obj_set_width(w->err, 520);
     lv_obj_set_pos(w->err, 236, 212);
 
+    w->back_btn = pill(s, "Back", EG_SURFACE, 640, 16, 120, 44);
+    lv_obj_add_event_cb(w->back_btn, back_cb, LV_EVENT_CLICKED, w);
+    lv_obj_add_flag(w->back_btn, LV_OBJ_FLAG_HIDDEN);
+
     w->k = kbd_create(s, enter_cb, w);
     set_target(w, w->pass);
     return s;
+}
+
+void eg_wifi_set_back_visible(lv_obj_t *screen, bool visible)
+{
+    wifi_t *w = lv_obj_get_user_data(screen);
+    if (visible) lv_obj_remove_flag(w->back_btn, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(w->back_btn, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void (*s_on_wifi)(void);
+void eg_screens_set_wifi_handler(void (*on_wifi)(void)) { s_on_wifi = on_wifi; }
+
+static void wifi_btn_cb(lv_event_t *e)
+{
+    (void)e;
+    if (s_on_wifi) s_on_wifi();
+}
+
+static void add_wifi_button(lv_obj_t *s)
+{
+    lv_obj_t *b = pill(s, "Change Wi-Fi", EG_SURFACE, 800 - 40 - 190, 480 - 30 - 44, 190, 44);
+    lv_obj_add_event_cb(b, wifi_btn_cb, LV_EVENT_CLICKED, NULL);
 }
 
 void eg_wifi_set_error(lv_obj_t *screen, const char *msg)
@@ -442,6 +478,7 @@ lv_obj_t *eg_pair_create(lv_obj_t *parent)
 
     p->status = label(s, &eg_sora_16, EG_FG_MIST, "");
     lv_obj_set_pos(p->status, 410, 360);
+    add_wifi_button(s);
     return s;
 }
 
@@ -471,14 +508,17 @@ lv_obj_t *eg_idle_create(lv_obj_t *parent)
     lv_obj_t *sub = label(s, &eg_sora_20, EG_FG_HAZE, "Start one on endgam.es and it shows up here.");
     lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 92);
     eg_idle_refresh(s);
+    add_wifi_button(s);
     return s;
 }
 
 void eg_idle_refresh(lv_obj_t *s)
 {
     static const char order[6] = {'k', 'q', 'r', 'b', 'n', 'p'};
-    lv_obj_t *old = lv_obj_get_child(s, -1);
-    if (old && lv_obj_get_user_data(old) == (void *)1) lv_obj_delete(old);
+    for (int32_t i = (int32_t)lv_obj_get_child_count(s) - 1; i >= 0; i--) {   /* drop the previous piece row */
+        lv_obj_t *c = lv_obj_get_child(s, i);
+        if (lv_obj_get_user_data(c) == (void *)1) lv_obj_delete(c);
+    }
     lv_obj_t *row = lv_obj_create(s);
     lv_obj_set_user_data(row, (void *)1);
     lv_obj_set_size(row, 6 * 100, 100);
@@ -494,5 +534,330 @@ void eg_idle_refresh(lv_obj_t *s)
         lv_image_set_src(im, src);
         lv_image_set_scale(im, 256 * 90 / 60);
         lv_obj_set_pos(im, i * 100 + 5, 5);
+    }
+}
+
+/* ======================= home and sub-screens ======================= */
+
+const char *eg_difficulty_label(const char *v)
+{
+    if (!v || !v[0]) return "";
+    if (strcmp(v, "beginner") == 0) return "Easy";
+    if (strcmp(v, "intermediate") == 0) return "Medium";
+    if (strcmp(v, "advanced") == 0) return "Hard";
+    if (strcmp(v, "expert") == 0) return "Expert";
+    return v;
+}
+
+static lv_obj_t *back_button(lv_obj_t *s, lv_event_cb_t cb, void *ud)
+{
+    lv_obj_t *b = pill(s, "Back", EG_SURFACE, 640, 16, 120, 44);
+    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, ud);
+    return b;
+}
+
+static lv_obj_t *big_button(lv_obj_t *s, const char *text, lv_color_t bg, lv_color_t fg, int x, int y, int w, int h)
+{
+    lv_obj_t *b = lv_button_create(s);
+    lv_obj_set_size(b, w, h);
+    lv_obj_set_pos(b, x, y);
+    lv_obj_set_style_bg_color(b, bg, 0);
+    lv_obj_set_style_radius(b, 18, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_t *l = label(b, &eg_sora_20_bold, fg, text);
+    lv_obj_align(l, LV_ALIGN_LEFT_MID, 12, 0);
+    return b;
+}
+
+/* ---------- home ---------- */
+
+typedef struct { eg_home_cb_t cb; lv_obj_t *who, *list, *status; char ids[EG_HOME_MAX_GAMES][40]; } home_t;
+
+static void home_play_cb(lv_event_t *e) { home_t *h = lv_event_get_user_data(e); if (h->cb.on_play_ai) h->cb.on_play_ai(); }
+static void home_chal_cb(lv_event_t *e) { home_t *h = lv_event_get_user_data(e); if (h->cb.on_challenge) h->cb.on_challenge(); }
+static void home_sets_cb(lv_event_t *e) { home_t *h = lv_event_get_user_data(e); if (h->cb.on_sets) h->cb.on_sets(); }
+static void home_open_cb(lv_event_t *e)
+{
+    home_t *h = lv_obj_get_user_data(lv_obj_get_screen(lv_event_get_target(e)));
+    intptr_t i = (intptr_t)lv_event_get_user_data(e);
+    if (h->cb.on_open_game) h->cb.on_open_game(h->ids[i]);
+}
+
+lv_obj_t *eg_home_create(lv_obj_t *parent, const eg_home_cb_t *cb)
+{
+    lv_obj_t *s = base(parent);
+    home_t *h = lv_malloc(sizeof *h);
+    memset(h, 0, sizeof *h);
+    h->cb = *cb;
+    lv_obj_set_user_data(s, h);
+
+    lv_obj_t *t = label(s, &eg_bungee_28, EG_CYAN, "ENDGAMES");
+    lv_obj_set_pos(t, 40, 22);
+    h->who = label(s, &eg_sora_16, EG_FG_HAZE, "");
+    lv_obj_set_pos(h->who, 40, 60);
+    lv_obj_t *wb = pill(s, "Change Wi-Fi", EG_SURFACE, 800 - 40 - 170, 20, 170, 40);
+    lv_obj_add_event_cb(wb, wifi_btn_cb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_add_event_cb(big_button(s, "Play the computer", EG_PINK, lv_color_white(), 40, 110, 300, 84), home_play_cb, LV_EVENT_CLICKED, h);
+    lv_obj_add_event_cb(big_button(s, "Challenge a friend", EG_CYAN, EG_BG_VOID, 40, 208, 300, 84), home_chal_cb, LV_EVENT_CLICKED, h);
+    lv_obj_add_event_cb(big_button(s, "Piece sets", EG_SURFACE, EG_FG, 40, 306, 300, 84), home_sets_cb, LV_EVENT_CLICKED, h);
+
+    lv_obj_t *gt = label(s, &eg_sora_20_bold, EG_YELLOW, "Your games");
+    lv_obj_set_pos(gt, 372, 110);
+    h->list = lv_obj_create(s);
+    lv_obj_set_size(h->list, 388, 290);
+    lv_obj_set_pos(h->list, 372, 142);
+    lv_obj_set_flex_flow(h->list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_bg_opa(h->list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(h->list, 0, 0);
+    lv_obj_set_style_pad_all(h->list, 0, 0);
+    lv_obj_set_style_pad_row(h->list, 8, 0);
+    lv_obj_set_scroll_dir(h->list, LV_DIR_VER);
+
+    h->status = label(s, &eg_sora_16, EG_FG_MIST, "Loading...");
+    lv_obj_set_pos(h->status, 372, 150);
+    return s;
+}
+
+void eg_home_set_status(lv_obj_t *screen, const char *msg)
+{
+    home_t *h = lv_obj_get_user_data(screen);
+    lv_label_set_text(h->status, msg ? msg : "");
+}
+
+void eg_home_set(lv_obj_t *screen, const eg_home_t *d)
+{
+    home_t *h = lv_obj_get_user_data(screen);
+    if (d->elo >= 0) lv_label_set_text_fmt(h->who, "%s  ·  %d", d->name, d->elo);
+    else lv_label_set_text_fmt(h->who, "%s  ·  Unranked", d->name);
+    lv_obj_clean(h->list);
+    lv_label_set_text(h->status, d->n_games ? "" : "No games in progress.");
+    for (int i = 0; i < d->n_games; i++) {
+        const eg_home_game_t *g = &d->games[i];
+        snprintf(h->ids[i], sizeof h->ids[i], "%s", g->id);
+        lv_obj_t *row = lv_button_create(h->list);
+        lv_obj_set_size(row, LV_PCT(100), 70);
+        lv_obj_set_style_pad_ver(row, 8, 0);
+        lv_obj_set_style_pad_hor(row, 12, 0);
+        lv_obj_set_style_bg_color(row, EG_SURFACE, 0);
+        lv_obj_set_style_radius(row, 12, 0);
+        lv_obj_set_style_shadow_width(row, 0, 0);
+        lv_obj_set_style_border_width(row, g->your_turn ? 3 : 0, 0);
+        lv_obj_set_style_border_color(row, EG_PINK, 0);
+        lv_obj_t *n = label(row, &eg_sora_20_bold, EG_FG, "");
+        lv_label_set_text_fmt(n, "vs %s", g->opponent[0] ? g->opponent : "Opponent");
+        lv_label_set_long_mode(n, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(n, 240);
+        lv_obj_align(n, LV_ALIGN_TOP_LEFT, 0, 0);
+        lv_obj_t *sub = label(row, &eg_sora_16, EG_FG_HAZE, "");
+        const char *col = g->your_color == 'b' ? "You're black" : "You're white";
+        if (g->opponent_ai) lv_label_set_text_fmt(sub, "%s  ·  %s", eg_difficulty_label(g->difficulty), col);
+        else lv_label_set_text(sub, col);
+        lv_obj_align(sub, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+        lv_obj_t *turn = label(row, &eg_sora_16, g->your_turn ? EG_PINK : EG_FG_MIST, g->your_turn ? "Your turn" : "Their turn");
+        lv_obj_align(turn, LV_ALIGN_RIGHT_MID, 0, 0);
+        lv_obj_add_event_cb(row, home_open_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+}
+
+/* ---------- play the computer ---------- */
+
+typedef struct {
+    void (*start)(const char *, const char *);
+    void (*back)(void);
+    lv_obj_t *diff[4], *col[3], *status;
+    int d, c;
+} aisetup_t;
+
+static const char *DIFF_API[4] = {"beginner", "intermediate", "advanced", "expert"};
+static const char *DIFF_UI[4] = {"Easy", "Medium", "Hard", "Expert"};
+static const char *COL_API[3] = {"white", "black", "random"};
+static const char *COL_UI[3] = {"White", "Black", "Random"};
+
+static void seg_paint(lv_obj_t **btns, int n, int sel)
+{
+    for (int i = 0; i < n; i++) {
+        lv_obj_set_style_bg_color(btns[i], i == sel ? EG_CYAN : EG_SURFACE, 0);
+        lv_obj_set_style_text_color(lv_obj_get_child(btns[i], 0), i == sel ? EG_BG_VOID : EG_FG, 0);
+    }
+}
+
+static void ai_diff_cb(lv_event_t *e)
+{
+    aisetup_t *a = lv_obj_get_user_data(lv_obj_get_screen(lv_event_get_target(e)));
+    a->d = (int)(intptr_t)lv_event_get_user_data(e);
+    seg_paint(a->diff, 4, a->d);
+}
+static void ai_col_cb(lv_event_t *e)
+{
+    aisetup_t *a = lv_obj_get_user_data(lv_obj_get_screen(lv_event_get_target(e)));
+    a->c = (int)(intptr_t)lv_event_get_user_data(e);
+    seg_paint(a->col, 3, a->c);
+}
+static void ai_start_cb(lv_event_t *e)
+{
+    aisetup_t *a = lv_event_get_user_data(e);
+    lv_label_set_text(a->status, "Starting...");
+    if (a->start) a->start(DIFF_API[a->d], COL_API[a->c]);
+}
+static void ai_back_cb(lv_event_t *e) { aisetup_t *a = lv_event_get_user_data(e); if (a->back) a->back(); }
+
+static lv_obj_t *seg_button(lv_obj_t *s, const char *text, int x, int y, int w)
+{
+    lv_obj_t *b = lv_button_create(s);
+    lv_obj_set_size(b, w, 64);
+    lv_obj_set_pos(b, x, y);
+    lv_obj_set_style_radius(b, 14, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_center(label(b, &eg_sora_20_bold, EG_FG, text));
+    return b;
+}
+
+lv_obj_t *eg_ai_setup_create(lv_obj_t *parent, void (*on_start)(const char *, const char *), void (*on_back)(void))
+{
+    lv_obj_t *s = base(parent);
+    aisetup_t *a = lv_malloc(sizeof *a);
+    memset(a, 0, sizeof *a);
+    a->start = on_start;
+    a->back = on_back;
+    a->d = 1;                          /* Medium */
+    a->c = 2;                          /* Random */
+    lv_obj_set_user_data(s, a);
+
+    lv_obj_set_pos(label(s, &eg_bungee_28, EG_PINK, "PLAY THE COMPUTER"), 40, 22);
+    back_button(s, ai_back_cb, a);
+
+    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "Difficulty"), 40, 96);
+    for (int i = 0; i < 4; i++) {
+        a->diff[i] = seg_button(s, DIFF_UI[i], 40 + i * 182, 128, 170);
+        lv_obj_add_event_cb(a->diff[i], ai_diff_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "You play"), 40, 222);
+    for (int i = 0; i < 3; i++) {
+        a->col[i] = seg_button(s, COL_UI[i], 40 + i * 242, 254, 230);
+        lv_obj_add_event_cb(a->col[i], ai_col_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+    seg_paint(a->diff, 4, a->d);
+    seg_paint(a->col, 3, a->c);
+
+    lv_obj_add_event_cb(pill(s, "Start", EG_PINK, 40, 366, 240, 64), ai_start_cb, LV_EVENT_CLICKED, a);
+    a->status = label(s, &eg_sora_16, EG_MAGENTA, "");
+    lv_obj_set_pos(a->status, 300, 388);
+    return s;
+}
+
+void eg_ai_setup_set_status(lv_obj_t *screen, const char *msg)
+{
+    aisetup_t *a = lv_obj_get_user_data(screen);
+    lv_label_set_text(a->status, msg ? msg : "");
+}
+
+/* ---------- challenge a friend ---------- */
+
+typedef struct { void (*back)(void); lv_obj_t *tile, *qr, *status; } chal_t;
+
+static void chal_back_cb(lv_event_t *e) { chal_t *c = lv_event_get_user_data(e); if (c->back) c->back(); }
+
+lv_obj_t *eg_challenge_create(lv_obj_t *parent, void (*on_back)(void))
+{
+    lv_obj_t *s = base(parent);
+    chal_t *c = lv_malloc(sizeof *c);
+    memset(c, 0, sizeof *c);
+    c->back = on_back;
+    lv_obj_set_user_data(s, c);
+
+    c->tile = lv_obj_create(s);
+    lv_obj_remove_flag(c->tile, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(c->tile, 300, 300);
+    lv_obj_set_pos(c->tile, 60, 100);
+    lv_obj_set_style_bg_color(c->tile, lv_color_white(), 0);
+    lv_obj_set_style_border_width(c->tile, 0, 0);
+    lv_obj_set_style_radius(c->tile, 16, 0);
+    lv_obj_set_style_pad_all(c->tile, 0, 0);
+    c->qr = lv_qrcode_create(c->tile);
+    lv_qrcode_set_size(c->qr, 260);
+    lv_qrcode_set_dark_color(c->qr, EG_BG_VOID);
+    lv_qrcode_set_light_color(c->qr, lv_color_white());
+    lv_obj_center(c->qr);
+    lv_obj_add_flag(c->tile, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_set_pos(label(s, &eg_bungee_28, EG_CYAN, "CHALLENGE A FRIEND"), 40, 22);
+    back_button(s, chal_back_cb, c);
+    lv_obj_t *a1 = label(s, &eg_sora_20, EG_FG, "Have them scan this.");
+    lv_obj_set_pos(a1, 400, 140);
+    lv_obj_t *a2 = label(s, &eg_sora_16, EG_FG_HAZE, "They play against your piece set.\nThe game opens here when they join.");
+    lv_obj_set_pos(a2, 400, 180);
+    c->status = label(s, &eg_sora_16, EG_FG_MIST, "");
+    lv_label_set_long_mode(c->status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(c->status, 360);
+    lv_obj_set_pos(c->status, 400, 250);
+    return s;
+}
+
+void eg_challenge_set(lv_obj_t *screen, const char *url, const char *status)
+{
+    chal_t *c = lv_obj_get_user_data(screen);
+    if (url && url[0]) {
+        lv_qrcode_update(c->qr, url, strlen(url));
+        lv_obj_remove_flag(c->tile, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(c->tile, LV_OBJ_FLAG_HIDDEN);
+    }
+    lv_label_set_text(c->status, status ? status : "");
+}
+
+/* ---------- piece sets ---------- */
+
+typedef struct { void (*pick)(const char *); void (*back)(void); lv_obj_t *list; char ids[EG_HOME_MAX_SETS][48]; } sets_t;
+
+static void sets_back_cb(lv_event_t *e) { sets_t *t = lv_event_get_user_data(e); if (t->back) t->back(); }
+static void sets_pick_cb(lv_event_t *e)
+{
+    sets_t *t = lv_obj_get_user_data(lv_obj_get_screen(lv_event_get_target(e)));
+    intptr_t i = (intptr_t)lv_event_get_user_data(e);
+    uint32_t n = lv_obj_get_child_count(t->list);
+    for (uint32_t k = 0; k < n; k++) lv_obj_set_style_border_width(lv_obj_get_child(t->list, k), (intptr_t)k == i ? 3 : 0, 0);
+    if (t->pick) t->pick(t->ids[i]);
+}
+
+lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *), void (*on_back)(void))
+{
+    lv_obj_t *s = base(parent);
+    sets_t *t = lv_malloc(sizeof *t);
+    memset(t, 0, sizeof *t);
+    t->pick = on_pick;
+    t->back = on_back;
+    lv_obj_set_user_data(s, t);
+    lv_obj_set_pos(label(s, &eg_bungee_28, EG_YELLOW, "PIECE SETS"), 40, 22);
+    back_button(s, sets_back_cb, t);
+    t->list = lv_obj_create(s);
+    lv_obj_set_size(t->list, 720, 360);
+    lv_obj_set_pos(t->list, 40, 92);
+    lv_obj_set_flex_flow(t->list, LV_FLEX_FLOW_ROW_WRAP);
+    lv_obj_set_style_bg_opa(t->list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(t->list, 0, 0);
+    lv_obj_set_style_pad_all(t->list, 0, 0);
+    lv_obj_set_style_pad_gap(t->list, 12, 0);
+    return s;
+}
+
+void eg_sets_set(lv_obj_t *screen, const eg_home_t *h)
+{
+    sets_t *t = lv_obj_get_user_data(screen);
+    lv_obj_clean(t->list);
+    for (int i = 0; i < h->n_sets; i++) {
+        snprintf(t->ids[i], sizeof t->ids[i], "%s", h->sets[i].id);
+        lv_obj_t *b = lv_button_create(t->list);
+        lv_obj_set_size(b, 354, 64);
+        lv_obj_set_style_bg_color(b, EG_SURFACE, 0);
+        lv_obj_set_style_radius(b, 12, 0);
+        lv_obj_set_style_shadow_width(b, 0, 0);
+        lv_obj_set_style_border_color(b, EG_PINK, 0);
+        lv_obj_set_style_border_width(b, strcmp(h->sets[i].id, h->active_set) == 0 ? 3 : 0, 0);
+        lv_obj_t *l = label(b, &eg_sora_20_bold, EG_FG, h->sets[i].name[0] ? h->sets[i].name : "Untitled set");
+        lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(l, 320);
+        lv_obj_align(l, LV_ALIGN_LEFT_MID, 6, 0);
+        lv_obj_add_event_cb(b, sets_pick_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
 }

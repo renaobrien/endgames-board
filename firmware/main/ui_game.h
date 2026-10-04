@@ -8,6 +8,7 @@ typedef struct {
     void (*on_resign)(void);
     void (*on_menu_forget)(void);   /* "Forget this board": wipe token, go back to pairing */
     void (*on_menu_wifi)(void);     /* "Wi-Fi settings" */
+    void (*on_menu_home)(void);     /* "Home": back to the home screen; the game keeps going */
 } eg_game_cb_t;
 
 /* Build the game screen under `parent` (800x480). */
