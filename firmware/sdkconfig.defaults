@@ -13,8 +13,8 @@ CONFIG_SPIRAM_MODE_HEX=y
 # 200 MHz PSRAM is gated behind experimental features (Elecrow's factory config does the same)
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
 CONFIG_SPIRAM_SPEED_200M=y
-# RGB panel: keep the bounce-buffer ISR in IRAM so flash writes don't glitch the screen
-CONFIG_LCD_RGB_ISR_IRAM_SAFE=y
+# RGB panel ISR stays in flash (Elecrow does the same). IRAM-safe mode rejects esp_lvgl_port's flash-resident vsync callback.
+# CONFIG_LCD_RGB_ISR_IRAM_SAFE is not set
 # Wi-Fi via the onboard ESP32-C6: ESP-Hosted over SDIO slot 1, 4-bit, C6 reset on GPIO20 (active high)
 CONFIG_ESP_HOSTED_CP_TARGET_ESP32C6=y
 CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE=y
