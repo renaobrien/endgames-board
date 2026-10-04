@@ -1,5 +1,21 @@
 # Reference board measurements
 
+**Source of truth: Elecrow's own PCB design file** (`ESP32-P4 Display 5.0 inch V1.0.brd`, in Elecrow's GitHub repo for this board). Numbers below that came from it are marked "Eagle". Caliper and photo numbers were used before the file was found.
+
+| What (Eagle) | Value |
+|---|---|
+| Board outline | 132.0 x 80.12 mm |
+| Corner holes | 3.2 mm drill (M3), centers 3.0 mm from the short edges, 2.82 mm from the UART1/I2C edge, 3.0 mm from the microSD edge |
+| USB-C UART0 (J1) center | 31.6 mm from the UART1/I2C edge |
+| USB-C USB2.0 (J16) center | 48.6 mm from the UART1/I2C edge |
+| Power slider (SW1) center | 18.6 mm from the UART1/I2C edge, 4.8 mm in from the USB-C edge, footprint 9.2 x 3.6 mm |
+| BOOT / RESET (K3 / K4) | 4.2 mm in from the opposite short edge, 46.5 / 53.0 mm from the UART1/I2C edge |
+| 2x8 header (J7) | center 55.6 mm along, 6.6 mm from the microSD edge |
+
+Note: a caliper read the holes as 2.5 mm (0.10"); the design file says 3.2 mm. The template uses 3.4 mm clearance holes and M3 screws. If M3 doesn't fit, switch back to M2.5.
+
+## Earlier hand measurements
+
 Board: Elecrow CrowPanel Advanced 5" ESP32-P4 HMI, SKU DHE04005D, PCB marked "ESP32 P4-Advance HMI Display 5.0 V1.0".
 
 Measured by hand with calipers (2026-10-04) unless marked otherwise. "Back view" = looking at the PCB side, screen face down.

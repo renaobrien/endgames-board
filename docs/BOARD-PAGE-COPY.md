@@ -21,7 +21,7 @@ Copy for the `/board` page on the website. Layout and styling follow the site's 
 
 - Elecrow CrowPanel Advanced 5" ESP32-P4 touchscreen
 - A 3D printer and some PLA
-- 4 x M2.5 x 20 mm screws
+- 4 x M3 x 20 mm screws
 - A USB-C cable and power adapter
 
 ## Open source

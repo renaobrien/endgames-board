@@ -1,6 +1,6 @@
 # Case v0: flat brick
 
-Two printed parts and four screws. Outer size 137.0 x 85.0 x 22.2 mm.
+Two printed parts and four screws. Outer size 138.0 x 84.9 x 22.2 mm.
 
 | File | What | Print |
 |---|---|---|
@@ -9,7 +9,7 @@ Two printed parts and four screws. Outer size 137.0 x 85.0 x 22.2 mm.
 | `power-slider-extender.stl` | Clips onto the tiny power slider nub. Its tab sticks out the slot in the case side so you can switch the board on and off | Socket opening up, no supports |
 | `case-lid.stl` | Front frame. Window matches the lit screen area, so no black border shows | Face down, no supports |
 
-Hardware: 4 x M2.5 x 20 mm screws, from the back. They pass through the tray posts and the board's corner holes and bite into the lid's posts.
+Hardware: 4 x M3 x 20 mm screws, from the back. They pass through the tray posts and the board's corner holes and bite into the lid's posts.
 
 Source: `brick.py` (Python, trimesh). Change the numbers at the top and re-run to regenerate the STLs.
 

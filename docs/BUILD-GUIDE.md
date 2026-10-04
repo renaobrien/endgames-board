@@ -12,7 +12,7 @@ Each step says what I used, then what changes if you use something else.
 |---|---|---|
 | Screen + controller | Elecrow CrowPanel Advanced 5" ESP32-P4 HMI (SKU DHE04005D), 800x480 IPS touch, about $43 | Screen, touch, Wi-Fi and USB-C all on one board. No wiring |
 | Power | USB-C cable and a 5V/2A USB power adapter | Plugs into the board's lower USB-C port |
-| Screws | 4 x M2.5 x 20 mm | Hold the case together through the board's corner holes |
+| Screws | 4 x M3 x 20 mm | Hold the case together through the board's corner holes |
 | Printer + filament | Any FDM printer, PLA | Nothing needs supports |
 | Computer | Mac, Windows or Linux with a USB-C cable | Only for installing the firmware once |
 
@@ -59,7 +59,7 @@ Do this with the board out of the case. The case keeps the flashing port covered
 
 ## 3. Print and assemble the case
 
-The case is a flat brick, 137 x 85 x 22 mm, in two parts.
+The case is a flat brick, 138 x 85 x 22 mm, in two parts.
 
 1. Print the parts.
    - `hardware/case/case-tray.stl`: floor down, no supports.
@@ -73,7 +73,7 @@ The case is a flat brick, 137 x 85 x 22 mm, in two parts.
    - The extender's tab goes through the slot in the side wall.
 4. Close it.
    - Lay the lid on top.
-   - Screw the 4 M2.5 x 20 mm screws in from the back.
+   - Screw the 4 M3 x 20 mm screws in from the back.
 5. Plug in power.
    - USB-C cable into the port on the side.
 
