@@ -1,4 +1,4 @@
-# Endgames Board: flat template to check the 4 corner holes and the USB-C port the case uses.
+# Endgames Board: flat template to check the 4 corner holes, the USB-C port the case uses, and the power slider slot.
 # Lay the board SCREEN DOWN on it, USB-C edge against the short wall,
 # UART1/I2C edge on the side with the notch.
 import trimesh
@@ -11,7 +11,7 @@ L,W=131.0,80.2; HOLE_IN=3.5; T=1.6; BORDER=9; CLR=1.6; WALL=1.6   # CLR covers t
 # Screen down: x=0 is the USB-C edge, y measured from the UART1/I2C edge (same numbers as the case).
 plate=box(0,0,0,L,W,T)
 plate=D(plate, box(BORDER,BORDER,-1,L-BORDER,W-BORDER,T+1))
-wall=box(-CLR-WALL,0,0,-CLR,W,12)                      # short wall along the USB-C edge
+wall=box(-CLR-WALL,0,0,-CLR,W,14)                      # short wall along the USB-C edge
 base=box(-CLR-WALL,0,0,0.01,W,T)                       # joins wall to plate
 t=U([plate,wall,base])
 cuts=[cyl(x,y,-1,T+1,2.7) for x in (HOLE_IN,L-HOLE_IN) for y in (HOLE_IN,W-HOLE_IN)]
@@ -19,6 +19,9 @@ cuts=[cyl(x,y,-1,T+1,2.7) for x in (HOLE_IN,L-HOLE_IN) for y in (HOLE_IN,W-HOLE_
 for y in (47.8,):                                   # only the USB-C the case uses (USB2.0)
     cuts.append(box(-CLR-WALL-1,y-5.0,6.9-2.2,-CLR+1,y+5.0,6.9+2.2))   # 10 x 4.4 mm window, real port is about 9 x 3.3
 cuts.append(box(L/2-4,-1,-1,L/2+4,3,T+1))          # notch marks the UART1/I2C edge
+# Power slider slot, same as the case: extender arm runs 3.7 to 6.1 mm off the board's back,
+# back is 5.1 mm above the plate when screen down. Slot length = arm width 4 + max travel 6.1.
+cuts.append(box(-CLR-WALL-1,17-(4+6.1)/2-0.4,5.1+3.73-0.4,-CLR+1,17+(4+6.1)/2+0.4,5.1+6.13+0.4))
 t=D(t,U(cuts))
 print(t.is_watertight,[round(v,1) for v in t.extents], round(t.volume/1000,1),'cm3')
 t.export('template.stl')
