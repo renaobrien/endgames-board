@@ -108,8 +108,7 @@ static esp_err_t panel_init(void)
         .clk_src = LCD_CLK_SRC_DEFAULT,
         .data_width = 16,
         .bits_per_pixel = 16,
-        .num_fbs = 2,
-        .bounce_buffer_size_px = 20 * EG_H_RES,
+        .num_fbs = 1,                       /* one frame buffer in PSRAM; LVGL draws partial areas into it */
         .dma_burst_size = 64,
         .disp_gpio_num = -1,
         .pclk_gpio_num = 3,
@@ -148,25 +147,23 @@ lv_display_t *eg_bsp_init(void)
     port_cfg.task_stack = 16 * 1024;
     if (lvgl_port_init(&port_cfg) != ESP_OK) return NULL;
 
+    /* Partial rendering into two 80-line PSRAM buffers, copied into the panel's frame buffer.
+       Same approach as Elecrow's factory firmware (no direct mode, no avoid-tearing: the
+       avoid-tearing path in esp_lvgl_port 2.6 calls the MIPI-DSI API on the P4). */
     lvgl_port_display_cfg_t disp_cfg = {
         .panel_handle = s_panel,
-        .buffer_size = EG_H_RES * EG_V_RES,
-        .double_buffer = false,
+        .control_handle = s_panel,
+        .buffer_size = EG_H_RES * 80,
+        .double_buffer = true,
         .hres = EG_H_RES,
         .vres = EG_V_RES,
         .monochrome = false,
         .color_format = LV_COLOR_FORMAT_RGB565,
-        .flags = {.buff_spiram = true, .swap_bytes = false, .full_refresh = false, .direct_mode = true},
+        .flags = {.buff_spiram = true, .swap_bytes = false, .full_refresh = false, .direct_mode = false},
     };
-    lvgl_port_display_rgb_cfg_t rgb_cfg = {.flags = {.bb_mode = true, .avoid_tearing = true}};
+    lvgl_port_display_rgb_cfg_t rgb_cfg = {.flags = {.bb_mode = false, .avoid_tearing = false}};
 #if CONFIG_EG_ROTATE_180
-    /* Upside-down mount (power switch bottom-right). Direct mode can't rotate, so draw into
-       partial buffers and let the port rotate each chunk (PPA on the P4) before it hits the panel. */
-    disp_cfg.buffer_size = EG_H_RES * 80;
-    disp_cfg.double_buffer = true;
-    disp_cfg.flags.direct_mode = false;
-    disp_cfg.flags.sw_rotate = true;
-    rgb_cfg.flags.avoid_tearing = false;
+    disp_cfg.flags.sw_rotate = true;   /* upside-down mount; the port rotates each chunk (PPA on the P4) */
 #endif
     s_disp = lvgl_port_add_disp_rgb(&disp_cfg, &rgb_cfg);
     if (!s_disp) { ESP_LOGE(TAG, "lvgl display add failed"); return NULL; }
