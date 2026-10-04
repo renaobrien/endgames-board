@@ -96,6 +96,26 @@ Every `409` and `422` includes the current `game`. Redraw from it.
 
 The server checks legality on every move. `legalMoves` is there so the board can show where a piece can go.
 
+### Get piece images: `GET /board-pieces`
+
+Optional query: `?gameId=uuid` to use the piece set you have in that game. Without it, the board gets your active set, or the default set if you have none.
+
+```json
+200 {
+  "apiVersion": 1,
+  "set": { "id": "uuid-or-default-hash", "name": "My set", "kind": "custom" },
+  "size": 60,
+  "pieces": {
+    "wk": "https://.../board/<set>/wk.png", "bk": "https://.../board/<set>/bk.png",
+    "wq": "...", "bq": "...", "wr": "...", "br": "...",
+    "wb": "...", "bb": "...", "wn": "...", "bn": "...", "wp": "...", "bp": "..."
+  }
+}
+502 { "error": "Could not prepare piece images" }
+```
+
+Twelve PNGs, 60x60, transparent background. Keys are color (`w`/`b`) plus piece (`k q r b n p`). Black pieces match the website: the same art darkened with a thin light halo. The URLs are public and permanent per set, so download once per set and cache on flash or SD. The first call for a set can take a few seconds while the server resizes and caches the images. Fetch again when `set.id` changes.
+
 ## Versioning
 
 Breaking changes get a new version number and run alongside the old one for at least 6 months. Adding a new field doesn't count as breaking, so ignore fields you don't recognize.
