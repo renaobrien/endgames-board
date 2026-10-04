@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: OFL-1.1 */
+/* Converted glyph data from Sora (OFL-1.1, see OFL-sora.txt). */
 /*******************************************************************************
  * Size: 16 px
  * Bpp: 4

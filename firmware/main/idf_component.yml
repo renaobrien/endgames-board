@@ -1,0 +1,6 @@
+dependencies:
+  idf: ">=5.4"
+  lvgl/lvgl: "~9.2.2"
+  espressif/esp_lvgl_port: "^2.4.0"
+  espressif/esp_wifi_remote: "*"      # Wi-Fi through the onboard ESP32-C6 (ESP-Hosted)
+  espressif/esp_hosted: "*"

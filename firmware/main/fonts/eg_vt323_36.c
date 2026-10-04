@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: OFL-1.1 */
+/* Converted glyph data from VT323 (OFL-1.1, see OFL-vt323.txt). */
 /*******************************************************************************
  * Size: 36 px
  * Bpp: 4

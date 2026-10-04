@@ -1,3 +1,5 @@
+/* SPDX-License-Identifier: OFL-1.1 */
+/* Converted glyph data from Bungee (OFL-1.1, see OFL-bungee.txt). */
 /*******************************************************************************
  * Size: 44 px
  * Bpp: 4
