@@ -463,7 +463,7 @@ lv_obj_t *eg_pair_create(lv_obj_t *parent)
     lv_obj_center(p->qr);
 
     /* right: instructions and the typed fallback */
-    lv_obj_t *t = label(s, &eg_bungee_28, EG_YELLOW, "PAIR THIS BOARD");
+    lv_obj_t *t = label(s, &eg_bungee_28, EG_YELLOW, "PAIR THIS CONSOLE");
     lv_obj_set_pos(t, 410, 90);
     lv_obj_t *a1 = label(s, &eg_sora_20, EG_FG, "Scan with your phone.");
     lv_obj_set_pos(a1, 410, 150);
@@ -584,8 +584,8 @@ static void tab_cb(lv_event_t *e)
 #define NAV_Y 416
 static void add_nav(lv_obj_t *s, int active)
 {
-    static const char *names[5] = {"Play", "Make", "Sets", "Rank", "You"};
-    const lv_color_t accents[5] = {EG_CYAN, EG_YELLOW, lv_color_hex(0xB45CFF), EG_MINT, EG_PINK};
+    static const char *names[4] = {"Play", "Sets", "Rank", "You"};
+    const lv_color_t accents[4] = {EG_CYAN, EG_YELLOW, EG_MINT, EG_PINK};
     lv_obj_t *bar = lv_obj_create(s);
     lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(bar, 800, 480 - NAV_Y);
@@ -596,12 +596,12 @@ static void add_nav(lv_obj_t *s, int active)
     lv_obj_set_style_border_color(bar, EG_SURFACE, 0);
     lv_obj_set_style_radius(bar, 0, 0);
     lv_obj_set_style_pad_all(bar, 0, 0);
-    for (int i = 0; i < 5; i++) {
+    for (int i = 0; i < 4; i++) {
         lv_obj_t *b = lv_obj_create(bar);
         lv_obj_remove_flag(b, LV_OBJ_FLAG_SCROLLABLE);
         lv_obj_add_flag(b, LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_size(b, 160, 480 - NAV_Y - 2);
-        lv_obj_set_pos(b, i * 160, 0);
+        lv_obj_set_size(b, 200, 480 - NAV_Y - 2);
+        lv_obj_set_pos(b, i * 200, 0);
         lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
         lv_obj_set_style_border_width(b, i == active ? 4 : 0, 0);
         lv_obj_set_style_border_side(b, LV_BORDER_SIDE_TOP, 0);
@@ -1154,7 +1154,7 @@ void eg_find_confirm(lv_obj_t *screen, int index)
     f->sent = false;
     lv_label_set_text_fmt(f->who, "Challenge %s?", f->users[index].name[0] ? f->users[index].name : "this player");
     lv_obj_remove_flag(f->send, LV_OBJ_FLAG_HIDDEN);
-    lv_label_set_text(f->status, "They get it in their games on endgam.es, the app, or their board.");
+    lv_label_set_text(f->status, "They get it in their games on endgam.es, the app, or their console.");
     lv_obj_remove_flag(f->panel, LV_OBJ_FLAG_HIDDEN);
 }
 
@@ -1167,100 +1167,153 @@ void eg_find_set_status(lv_obj_t *screen, const char *msg, bool sent)
     else lv_obj_remove_flag(f->send, LV_OBJ_FLAG_HIDDEN);
 }
 
-/* ---------- Sets tab ---------- */
+/* ---------- Sets tab (pick Default or one of yours; making a new one opens the QR screen) ---------- */
 
-typedef struct { void (*pick)(const char *); lv_obj_t *list; char ids[EG_HOME_MAX_SETS][48]; } sets_t;
+typedef struct { void (*pick)(const char *); void (*make)(void); lv_obj_t *list; char ids[EG_HOME_MAX_SETS][48]; } sets_t;
 
 static void sets_pick_cb(lv_event_t *e)
 {
     sets_t *t = lv_obj_get_user_data(lv_obj_get_screen(lv_event_get_target(e)));
     intptr_t i = (intptr_t)lv_event_get_user_data(e);
     uint32_t n = lv_obj_get_child_count(t->list);
-    for (uint32_t k = 0; k < n; k++) lv_obj_set_style_border_width(lv_obj_get_child(t->list, k), (intptr_t)k == i ? 4 : 0, 0);
+    for (uint32_t k = 0; k < n; k++) {
+        lv_obj_t *c = lv_obj_get_child(t->list, k);
+        if (lv_obj_get_user_data(c) == t) lv_obj_set_style_border_width(c, c == lv_event_get_current_target(e) ? 4 : 0, 0);
+    }
     if (t->pick) t->pick(t->ids[i]);
 }
 
-lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *))
+static void sets_make_cb(lv_event_t *e) { sets_t *t = lv_event_get_user_data(e); if (t->make) t->make(); }
+
+static lv_obj_t *sets_heading(lv_obj_t *list, const char *text)
+{
+    lv_obj_t *l = label(list, &eg_sora_16, EG_FG_MIST, text);
+    lv_obj_set_width(l, LV_PCT(100));
+    return l;
+}
+
+lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *), void (*on_make)(void))
 {
     lv_obj_t *s = base(parent);
     sets_t *t = lv_malloc(sizeof *t);
     memset(t, 0, sizeof *t);
     t->pick = on_pick;
+    t->make = on_make;
     lv_obj_set_user_data(s, t);
-    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "Your sets"), 24, 20);
+    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "Piece sets"), 24, 20);
     lv_obj_set_pos(label(s, &eg_sora_16, EG_FG_HAZE, "Tap one to play with it here and on the web."), 160, 23);
+    lv_obj_t *mk = pill(s, "Make a new set", EG_YELLOW, 556, 12, 220, 44);
+    lv_obj_set_style_text_color(lv_obj_get_child(mk, 0), EG_BG_VOID, 0);
+    lv_obj_add_event_cb(mk, sets_make_cb, LV_EVENT_CLICKED, t);
     t->list = lv_obj_create(s);
-    lv_obj_set_size(t->list, 752, 352);
-    lv_obj_set_pos(t->list, 24, 56);
+    lv_obj_set_size(t->list, 752, 340);
+    lv_obj_set_pos(t->list, 24, 68);
     lv_obj_set_flex_flow(t->list, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_style_bg_opa(t->list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(t->list, 0, 0);
     lv_obj_set_style_pad_all(t->list, 0, 0);
     lv_obj_set_style_pad_gap(t->list, 12, 0);
-    add_nav(s, 2);
+    add_nav(s, 1);
     return s;
+}
+
+static void set_tile(sets_t *t, const eg_set_t *st, const char *name, bool active, int i)
+{
+    snprintf(t->ids[i], sizeof t->ids[i], "%s", st->id);
+    lv_obj_t *b = lv_button_create(t->list);
+    lv_obj_set_user_data(b, t);
+    lv_obj_set_size(b, 370, 104);
+    lv_obj_set_style_bg_color(b, EG_SURFACE, 0);
+    lv_obj_set_style_radius(b, 14, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_set_style_pad_all(b, 8, 0);
+    lv_obj_set_style_border_color(b, EG_PINK, 0);
+    lv_obj_set_style_border_width(b, active ? 4 : 0, 0);
+    /* preview tile: king and knight on a light square */
+    lv_obj_t *tile = lv_obj_create(b);
+    lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(tile, 128, 84);
+    lv_obj_align(tile, LV_ALIGN_LEFT_MID, 0, 0);
+    lv_obj_set_style_bg_color(tile, EG_BOARD_LIGHT, 0);
+    lv_obj_set_style_border_width(tile, 0, 0);
+    lv_obj_set_style_radius(tile, 10, 0);
+    lv_obj_set_style_pad_all(tile, 0, 0);
+    const void *k = eg_thumb_find(st->preview_k), *n = eg_thumb_find(st->preview_n);
+    if (k) { lv_obj_t *im = lv_image_create(tile); lv_image_set_src(im, k); lv_obj_align(im, LV_ALIGN_LEFT_MID, 6, 0); }
+    if (n) { lv_obj_t *im = lv_image_create(tile); lv_image_set_src(im, n); lv_obj_align(im, LV_ALIGN_RIGHT_MID, -6, 0); }
+    if (!k && !n) { lv_obj_t *w = label(tile, &eg_sora_16, EG_BG_VOID, "Loading..."); lv_obj_center(w); }
+    lv_obj_t *l = label(b, &eg_sora_20_bold, EG_FG, name);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(l, 210);
+    lv_obj_align(l, LV_ALIGN_LEFT_MID, 140, active ? -12 : 0);
+    if (active) { lv_obj_t *a = label(b, &eg_sora_16, EG_PINK, "Playing with this"); lv_obj_align(a, LV_ALIGN_LEFT_MID, 140, 16); }
+    lv_obj_add_event_cb(b, sets_pick_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
 }
 
 void eg_sets_set(lv_obj_t *screen, const eg_home_t *h)
 {
     sets_t *t = lv_obj_get_user_data(screen);
     lv_obj_clean(t->list);
+    bool active_default = !h->active_set[0] || strcmp(h->active_set, "default") == 0;
+    /* Default first, then the owner's own sets */
+    int mine = 0;
+    for (int i = 0; i < h->n_sets; i++)
+        if (strcmp(h->sets[i].id, "default") == 0) set_tile(t, &h->sets[i], "Default", active_default, i);
+    if (!h->n_sets) {                          /* home not loaded yet: still offer the default */
+        static const eg_set_t def = {.id = "default"};
+        set_tile(t, &def, "Default", active_default, 0);
+    }
+    sets_heading(t->list, "Your sets");
     for (int i = 0; i < h->n_sets; i++) {
-        snprintf(t->ids[i], sizeof t->ids[i], "%s", h->sets[i].id);
+        if (strcmp(h->sets[i].id, "default") == 0) continue;
+        set_tile(t, &h->sets[i], h->sets[i].name[0] ? h->sets[i].name : "Untitled set", strcmp(h->sets[i].id, h->active_set) == 0, i);
+        mine++;
+    }
+    if (!mine) {
         lv_obj_t *b = lv_button_create(t->list);
         lv_obj_set_size(b, 370, 104);
-        lv_obj_set_style_bg_color(b, EG_SURFACE, 0);
+        lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(b, 2, 0);
+        lv_obj_set_style_border_color(b, EG_YELLOW, 0);
         lv_obj_set_style_radius(b, 14, 0);
         lv_obj_set_style_shadow_width(b, 0, 0);
-        lv_obj_set_style_pad_all(b, 8, 0);
-        lv_obj_set_style_border_color(b, EG_PINK, 0);
-        lv_obj_set_style_border_width(b, strcmp(h->sets[i].id, h->active_set) == 0 ? 4 : 0, 0);
-        /* preview tile: king and knight on a light square */
-        lv_obj_t *tile = lv_obj_create(b);
-        lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
-        lv_obj_set_size(tile, 128, 84);
-        lv_obj_align(tile, LV_ALIGN_LEFT_MID, 0, 0);
-        lv_obj_set_style_bg_color(tile, EG_BOARD_LIGHT, 0);
-        lv_obj_set_style_border_width(tile, 0, 0);
-        lv_obj_set_style_radius(tile, 10, 0);
-        lv_obj_set_style_pad_all(tile, 0, 0);
-        const void *k = eg_thumb_find(h->sets[i].preview_k), *n = eg_thumb_find(h->sets[i].preview_n);
-        if (k) { lv_obj_t *im = lv_image_create(tile); lv_image_set_src(im, k); lv_obj_align(im, LV_ALIGN_LEFT_MID, 6, 0); }
-        if (n) { lv_obj_t *im = lv_image_create(tile); lv_image_set_src(im, n); lv_obj_align(im, LV_ALIGN_RIGHT_MID, -6, 0); }
-        lv_obj_t *l = label(b, &eg_sora_20_bold, EG_FG, h->sets[i].name[0] ? h->sets[i].name : "Untitled set");
-        lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
-        lv_obj_set_width(l, 210);
-        lv_obj_align(l, LV_ALIGN_LEFT_MID, 140, 0);
-        lv_obj_add_event_cb(b, sets_pick_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        lv_obj_t *l = label(b, &eg_sora_16, EG_YELLOW, "You haven't made one yet.\nTap to make a set from a photo.");
+        lv_obj_center(l);
+        lv_obj_add_event_cb(b, sets_make_cb, LV_EVENT_CLICKED, t);
     }
 }
 
-/* ---------- Make tab ---------- */
+/* ---------- Make a set (opened from Sets; QR to the web maker) ---------- */
 
 #define EG_MAKE_URL "https://endgam.es/make"
 
-lv_obj_t *eg_make_create(lv_obj_t *parent)
+typedef struct { void (*back)(void); } make_t;
+static void make_back_cb(lv_event_t *e) { make_t *m = lv_event_get_user_data(e); if (m->back) m->back(); }
+
+lv_obj_t *eg_make_create(lv_obj_t *parent, void (*on_back)(void))
 {
     lv_obj_t *s = base(parent);
+    make_t *m = lv_malloc(sizeof *m);
+    m->back = on_back;
     lv_obj_t *tile = lv_obj_create(s);
     lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(tile, 300, 300);
-    lv_obj_set_pos(tile, 60, 56);
+    lv_obj_set_size(tile, 340, 340);
+    lv_obj_set_pos(tile, 60, 70);
     lv_obj_set_style_bg_color(tile, lv_color_white(), 0);
     lv_obj_set_style_border_width(tile, 0, 0);
     lv_obj_set_style_radius(tile, 16, 0);
     lv_obj_set_style_pad_all(tile, 0, 0);
     lv_obj_t *qr = lv_qrcode_create(tile);
-    lv_qrcode_set_size(qr, 260);
+    lv_qrcode_set_size(qr, 300);
     lv_qrcode_set_dark_color(qr, EG_BG_VOID);
     lv_qrcode_set_light_color(qr, lv_color_white());
     lv_qrcode_update(qr, EG_MAKE_URL, strlen(EG_MAKE_URL));
     lv_obj_center(qr);
-    lv_obj_set_pos(label(s, &eg_bungee_28, EG_YELLOW, "MAKE A SET"), 400, 90);
-    lv_obj_set_pos(label(s, &eg_sora_20, EG_FG, "Scan to make one on your phone."), 400, 146);
+    lv_obj_set_pos(label(s, &eg_bungee_28, EG_YELLOW, "MAKE A SET"), 440, 110);
+    lv_obj_set_pos(label(s, &eg_sora_20, EG_FG, "Scan to make one\non your phone."), 440, 166);
     lv_obj_t *t = label(s, &eg_sora_16, EG_FG_HAZE, "Pick a photo. Its colors and mood\nbecome a full piece set.\nIt shows up in Sets when it's ready.");
-    lv_obj_set_pos(t, 400, 190);
-    add_nav(s, 1);
+    lv_obj_set_pos(t, 440, 240);
+    back_button(s, make_back_cb, m);
     return s;
 }
 
@@ -1287,7 +1340,7 @@ lv_obj_t *eg_rank_create(lv_obj_t *parent)
     lv_obj_set_style_pad_row(r->list, 6, 0);
     r->status = label(s, &eg_sora_16, EG_FG_MIST, "Loading...");
     lv_obj_set_pos(r->status, 24, 64);
-    add_nav(s, 3);
+    add_nav(s, 2);
     return s;
 }
 
@@ -1350,14 +1403,14 @@ lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *v
 
     lv_obj_t *wb = pill(s, "Change Wi-Fi", EG_SURFACE, 40, 150, 260, 60);
     lv_obj_add_event_cb(wb, wifi_btn_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *fb = pill(s, "Forget this board", EG_SURFACE, 40, 226, 260, 60);
+    lv_obj_t *fb = pill(s, "Forget this console", EG_SURFACE, 40, 226, 260, 60);
     lv_obj_set_style_text_color(lv_obj_get_child(fb, 0), EG_PINK_SOFT, 0);
     lv_obj_add_event_cb(fb, you_forget_cb, LV_EVENT_CLICKED, y);
 
     lv_obj_t *v = label(s, &eg_sora_16, EG_FG_MIST, "");
     lv_label_set_text_fmt(v, "Firmware %s (auto update)", version);
     lv_obj_set_pos(v, 40, 330);
-    add_nav(s, 4);
+    add_nav(s, 3);
     return s;
 }
 

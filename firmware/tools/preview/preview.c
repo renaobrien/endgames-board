@@ -78,7 +78,7 @@ int main(int argc, char **argv)
         eg_ap_t aps[] = {{"Renas Wifi", -48, false}, {"NETGEAR-5G", -61, false}, {"xfinitywifi", -70, true}, {"Coffee Shop Guest Wifi", -82, false}};
         eg_wifi_set_networks(w, aps, 4);
         if (argc > 3) lv_dropdown_open(lv_obj_get_child(w, 1));
-    } else if (strcmp(which, "idle") == 0 || strcmp(which, "home") == 0 || strcmp(which, "sets") == 0) {
+    } else if (strcmp(which, "idle") == 0 || strcmp(which, "home") == 0 || strncmp(which, "sets", 4) == 0) {
         static eg_home_t h = {.name = "deltajuliet", .elo = 1240, .n_games = 3, .active_set = "s1", .n_sets = 3,
             .n_incoming = 1, .incoming = {{"c1", "queenbee", 1820}},
             .games = {{"g1", "Stockfish", true, "intermediate", 'w', true, 14},
@@ -86,7 +86,8 @@ int main(int argc, char **argv)
                       {"g3", "Stockfish", true, "expert", 'b', false, 3}},
             .sets = {{"default", "Default"}, {"s1", "Vaporwave Rena"}, {"s2", "Jon Bo"}}};
         for (int i = 0; i < 3; i++) { strcpy(h.sets[i].preview_k, "wk"); strcpy(h.sets[i].preview_n, "wn"); }
-        if (strcmp(which, "sets") == 0) eg_sets_set(eg_sets_create(lv_screen_active(), NULL), &h);
+        if (strcmp(which, "sets-empty") == 0) { h.n_sets = 1; strcpy(h.active_set, "default"); }
+        if (strncmp(which, "sets", 4) == 0) eg_sets_set(eg_sets_create(lv_screen_active(), NULL, NULL), &h);
         else { eg_home_cb_t cb = {0}; eg_home_set(eg_home_create(lv_screen_active(), &cb), &h); }
     } else if (strcmp(which, "quick") == 0) {
         eg_qm_set(eg_qm_create(lv_screen_active(), NULL, NULL), "Looking for an opponent... 0:42", true);
@@ -99,7 +100,7 @@ int main(int argc, char **argv)
         eg_find_set_results(f, u, 3, NULL);
         if (strcmp(which, "find-confirm") == 0) eg_find_confirm(f, 0);
     } else if (strcmp(which, "make") == 0) {
-        eg_make_create(lv_screen_active());
+        eg_make_create(lv_screen_active(), NULL);
     } else if (strcmp(which, "rank") == 0) {
         static eg_rank_t r = {.n = 6, .you_rank = 4, .you_elo = 1240, .rows = {
             {1, "queenbee", 1820, false}, {2, "magnus_fan", 1655, false}, {3, "knightowl", 1490, false},

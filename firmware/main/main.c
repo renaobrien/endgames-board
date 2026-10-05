@@ -118,7 +118,7 @@ static void on_menu_wifi(void)
  * the network task picks up within 250 ms. */
 
 static struct {
-    volatile bool home, ai, challenge, open, set, resign, rank, thumbs;
+    volatile bool home, ai, challenge, open, set, resign, rank, thumbs, sets;
     volatile bool qm_join, qm_cancel, search, chal_send, respond, respond_accept;
     char difficulty[16], color[8], game_id[40], set_id[48];
     char query[32], opp_id[40], opp_name[33], first[10], chal_id[40];
@@ -176,15 +176,17 @@ static void on_respond(const char *id, bool accept)
 
 static void on_tab(int tab)
 {
-    lv_obj_t *screens[5] = {scr_home, scr_make, scr_sets, scr_rank, scr_you};
-    if (tab < 0 || tab > 4) return;
-    if (tab == 2) { eg_sets_set(scr_sets, &home); req.thumbs = true; }
-    if (tab == 3) req.rank = true;
-    if (tab == 4) eg_you_set(scr_you, &home);
+    lv_obj_t *screens[4] = {scr_home, scr_sets, scr_rank, scr_you};
+    if (tab < 0 || tab > 3) return;
+    if (tab == 1) { eg_sets_set(scr_sets, &home); req.sets = true; }
+    if (tab == 2) req.rank = true;
+    if (tab == 3) eg_you_set(scr_you, &home);
     if (tab == 0) req.home = true;
     behind = screens[tab];                 /* Wi-Fi's Back returns here */
     ui_load(screens[tab]);
 }
+static void on_make(void) { ui_load(scr_make); }
+static void on_make_back(void) { req.sets = true; behind = scr_sets; ui_load(scr_sets); }   /* a new set may be ready */
 static void on_home_open(const char *id) { snprintf(req.game_id, sizeof req.game_id, "%s", id); req.open = true; }
 static void on_sub_back(void) { req.search = false; req.home = true; behind = scr_home; ui_load(scr_home); }
 static void on_ai_start(const char *difficulty, const char *color)
@@ -513,6 +515,7 @@ static void net_task(void *arg)
                 if (r == EG_OK) {
                     snprintf(home.active_set, sizeof home.active_set, "%s", req.set_id);
                     eg_pieces_load(token, &changed);      /* new set's pieces for every board */
+                    req.thumbs = true;                    /* redraw Sets with the new pick marked */
                 }
             }
             if (req.rank) {
@@ -522,6 +525,13 @@ static void net_task(void *arg)
                 eg_rank_set(scr_rank, &rank, r == EG_OK ? NULL : "Couldn't load the leaderboard.");
                 lvgl_port_unlock();
             }
+            if (req.sets) {                      /* Sets opened: fetch the list fresh (a set made on the phone shows up) */
+                req.sets = false;
+                if (eg_api_home(token, &home) == EG_OK) {
+                    lvgl_port_lock(0); eg_home_set(scr_home, &home); eg_you_set(scr_you, &home); lvgl_port_unlock();
+                }
+                req.thumbs = true;
+            }
             if (req.thumbs) {
                 req.thumbs = false;
                 bool any = false;
@@ -529,7 +539,8 @@ static void net_task(void *arg)
                     if (!eg_thumb_find(home.sets[i].preview_k) && eg_thumb_load(home.sets[i].preview_k)) any = true;
                     if (!eg_thumb_find(home.sets[i].preview_n) && eg_thumb_load(home.sets[i].preview_n)) any = true;
                 }
-                if (any) { lvgl_port_lock(0); eg_sets_set(scr_sets, &home); lvgl_port_unlock(); }
+                (void)any;                       /* redraw anyway: home may have brought new sets */
+                lvgl_port_lock(0); eg_sets_set(scr_sets, &home); lvgl_port_unlock();
             }
             if (req.resign && view == V_GAME && have_game) {
                 req.resign = false;
@@ -625,8 +636,8 @@ void app_main(void)
     eg_find_cb_t fcb = {.on_query = on_find_query, .on_send = on_find_send, .on_link = on_home_challenge, .on_back = on_sub_back};
     scr_find = eg_find_create(NULL, &fcb);
     eg_challenge_set_find(scr_chal, on_home_find);
-    scr_sets = eg_sets_create(NULL, on_pick_set);
-    scr_make = eg_make_create(NULL);
+    scr_sets = eg_sets_create(NULL, on_pick_set, on_make);
+    scr_make = eg_make_create(NULL, on_make_back);
     scr_rank = eg_rank_create(NULL);
     scr_you = eg_you_create(NULL, on_forget, eg_ota_version());
     eg_game_cb_t cb = {.on_move = on_move, .on_resign = on_resign, .on_menu_home = on_menu_home};

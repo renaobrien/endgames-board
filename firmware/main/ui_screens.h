@@ -70,9 +70,9 @@ void eg_find_confirm(lv_obj_t *screen, int index);                         /* op
 /* Tabs (same as the website): 0 Play, 1 Make, 2 Sets, 3 Rank, 4 You. */
 void eg_screens_set_tab_handler(void (*on_tab)(int tab));
 
-lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *set_id));
+lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *set_id), void (*on_make)(void));
 void eg_sets_set(lv_obj_t *screen, const eg_home_t *h);
-lv_obj_t *eg_make_create(lv_obj_t *parent);
+lv_obj_t *eg_make_create(lv_obj_t *parent, void (*on_back)(void));
 lv_obj_t *eg_rank_create(lv_obj_t *parent);
 void eg_rank_set(lv_obj_t *screen, const eg_rank_t *d, const char *error);   /* error non-NULL shows it instead */
 lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *version);
