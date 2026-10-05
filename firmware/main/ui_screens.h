@@ -30,8 +30,11 @@ void eg_idle_refresh(lv_obj_t *screen);   /* re-reads pieces after the set chang
 
 typedef struct {
     void (*on_play_ai)(void);                 /* open the computer setup screen */
-    void (*on_challenge)(void);               /* open the challenge screen and create a link */
+    void (*on_challenge)(void);               /* open the challenge screen and create a link (QR) */
     void (*on_open_game)(const char *game_id);
+    void (*on_quick_match)(void);             /* open the quick match screen and join the queue */
+    void (*on_find_player)(void);             /* open the player search screen */
+    void (*on_respond)(const char *challenge_id, bool accept);   /* incoming challenge: Accept / Decline */
 } eg_home_cb_t;
 
 lv_obj_t *eg_home_create(lv_obj_t *parent, const eg_home_cb_t *cb);
@@ -45,6 +48,23 @@ void eg_ai_setup_set_status(lv_obj_t *screen, const char *msg);
 /* Challenge a friend: QR of the challenge link. */
 lv_obj_t *eg_challenge_create(lv_obj_t *parent, void (*on_back)(void));
 void eg_challenge_set(lv_obj_t *screen, const char *url, const char *status);   /* url NULL hides the QR */
+
+/* Quick match: "Looking for an opponent..." with Cancel. searching false shows Try again and turns Cancel into Back. */
+lv_obj_t *eg_qm_create(lv_obj_t *parent, void (*on_cancel)(void), void (*on_retry)(void));
+void eg_qm_set(lv_obj_t *screen, const char *msg, bool searching);
+
+/* Challenge a player: search by name, pick a player, pick who goes first, send. */
+typedef struct {
+    void (*on_query)(const char *q);                                       /* every edit; the caller debounces */
+    void (*on_send)(const char *user_id, const char *name, const char *first);   /* first: me | computer | random */
+    void (*on_link)(void);                                                 /* "Share a link" (the QR challenge) */
+    void (*on_back)(void);
+} eg_find_cb_t;
+lv_obj_t *eg_find_create(lv_obj_t *parent, const eg_find_cb_t *cb);
+void eg_find_reset(lv_obj_t *screen);                                       /* empty search, keyboard up */
+void eg_find_set_results(lv_obj_t *screen, const eg_user_t *users, int n, const char *msg);   /* msg non-NULL shows instead of an empty list */
+void eg_find_set_status(lv_obj_t *screen, const char *msg, bool sent);   /* sent: hides Send, Back goes home */
+void eg_find_confirm(lv_obj_t *screen, int index);                         /* open the confirm panel for result index (preview) */
 
 /* Tabs (same as the website): 0 Play, 1 Make, 2 Sets, 3 Rank, 4 You. */
 void eg_screens_set_tab_handler(void (*on_tab)(int tab));

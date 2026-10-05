@@ -8,7 +8,7 @@ cmake -S . -B build -DCMAKE_BUILD_TYPE=Release >/dev/null
 cmake --build build -j >/dev/null
 OUT=../../../docs/screenshots
 mkdir -p "$OUT"
-for SCREEN in game pair idle wifi; do
+for SCREEN in ${SCREENS:-game pair idle wifi home quick quick-none find find-confirm}; do
   ./build/preview "$OUT/board-$SCREEN.bmp" $SCREEN
   if command -v sips >/dev/null; then sips -s format png "$OUT/board-$SCREEN.bmp" --out "$OUT/board-$SCREEN.png" >/dev/null
   else python3 -c "from PIL import Image; Image.open('$OUT/board-$SCREEN.bmp').save('$OUT/board-$SCREEN.png')"; fi

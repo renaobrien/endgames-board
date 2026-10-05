@@ -44,9 +44,14 @@ typedef struct {
 
 typedef struct { char id[48]; char name[33]; char preview_k[160], preview_n[160]; } eg_set_t;   /* preview: white king and knight PNGs */
 
+#define EG_HOME_MAX_INCOMING 10
+typedef struct { char id[40]; char name[33]; int elo; } eg_incoming_t;   /* a direct challenge waiting for your answer */
+
 typedef struct {
     char name[33];
     int elo;                    /* -1 before the first ranked game */
+    int n_incoming;
+    eg_incoming_t incoming[EG_HOME_MAX_INCOMING];
     int n_games;
     eg_home_game_t games[EG_HOME_MAX_GAMES];
     char active_set[48];
@@ -66,6 +71,27 @@ eg_result_t eg_api_new_challenge(const char *token, const char *color, char url[
 eg_result_t eg_api_resign(const char *token, const char *game_id, eg_game_t *out);
 /* POST /board-set */
 eg_result_t eg_api_set(const char *token, const char *set_id);
+
+/* ---------- people: quick match and direct challenges ---------- */
+
+typedef enum { EG_QM_IDLE, EG_QM_WAITING, EG_QM_MATCHED } eg_qm_status_t;
+/* action "join" or "cancel" POSTs /board-quick-match; NULL GETs the current status (what you poll).
+ * EG_OK fills *status, and *game when matched. EG_NO_GAME: matched, but the game didn't come back
+ * (it is still in progress and shows up in board-home). */
+eg_result_t eg_api_quick_match(const char *token, const char *action, eg_qm_status_t *status, eg_game_t *game);
+
+#define EG_USERS_MAX 10
+typedef struct { char id[40]; char name[33]; int elo; } eg_user_t;
+/* GET /board-users?q=  q needs at least 2 characters (shorter returns no users). */
+eg_result_t eg_api_users(const char *token, const char *q, eg_user_t users[EG_USERS_MAX], int *n);
+
+/* POST /board-new-game {mode:"challenge", opponentId, first}. first: me | computer (they move first) | random.
+ * EG_CONFLICT: you already have a pending challenge with this player. */
+eg_result_t eg_api_challenge_player(const char *token, const char *opponent_id, const char *first);
+
+/* POST /board-challenge-respond {id, accept}. Accept: EG_OK and *out is the new game (EG_NO_GAME if it didn't come back).
+ * Decline: EG_OK. EG_CONFLICT: the challenge expired, is gone, or was already answered. */
+eg_result_t eg_api_challenge_respond(const char *token, const char *id, bool accept, eg_game_t *out);
 
 /* GET /board-leaderboard */
 #define EG_RANK_MAX 50

@@ -614,15 +614,50 @@ static void add_nav(lv_obj_t *s, int active)
 
 /* ---------- Play (home) ---------- */
 
-typedef struct { eg_home_cb_t cb; lv_obj_t *list, *status; char ids[EG_HOME_MAX_GAMES][40]; } home_t;
+typedef struct {
+    eg_home_cb_t cb;
+    lv_obj_t *list, *status;
+    char ids[EG_HOME_MAX_GAMES][40];
+    char inc_ids[EG_HOME_MAX_INCOMING][40];
+} home_t;
 
 static void home_play_cb(lv_event_t *e) { home_t *h = lv_event_get_user_data(e); if (h->cb.on_play_ai) h->cb.on_play_ai(); }
-static void home_chal_cb(lv_event_t *e) { home_t *h = lv_event_get_user_data(e); if (h->cb.on_challenge) h->cb.on_challenge(); }
+static void home_quick_cb(lv_event_t *e) { home_t *h = lv_event_get_user_data(e); if (h->cb.on_quick_match) h->cb.on_quick_match(); }
+static void home_find_cb(lv_event_t *e) { home_t *h = lv_event_get_user_data(e); if (h->cb.on_find_player) h->cb.on_find_player(); }
 static void home_open_cb(lv_event_t *e)
 {
     home_t *h = lv_obj_get_user_data(lv_obj_get_screen(lv_event_get_target(e)));
     intptr_t i = (intptr_t)lv_event_get_user_data(e);
     if (h->cb.on_open_game) h->cb.on_open_game(h->ids[i]);
+}
+
+/* Accept / Decline. user_data: index * 2 + accept. Both buttons on the row go dead after one tap. */
+static void home_respond_cb(lv_event_t *e)
+{
+    lv_obj_t *btn = lv_event_get_target(e);
+    home_t *h = lv_obj_get_user_data(lv_obj_get_screen(btn));
+    intptr_t v = (intptr_t)lv_event_get_user_data(e);
+    int i = (int)(v / 2);
+    bool accept = v % 2;
+    lv_obj_t *row = lv_obj_get_parent(btn);
+    for (uint32_t k = 0; k < lv_obj_get_child_count(row); k++) {
+        lv_obj_t *c = lv_obj_get_child(row, k);
+        if (lv_obj_check_type(c, &lv_button_class)) lv_obj_add_state(c, LV_STATE_DISABLED);
+    }
+    lv_label_set_text(h->status, accept ? "Starting the game..." : "");
+    if (h->cb.on_respond) h->cb.on_respond(h->inc_ids[i], accept);
+}
+
+static lv_obj_t *small_button(lv_obj_t *p, const char *text, lv_color_t bg, lv_color_t fg, int w)
+{
+    lv_obj_t *b = lv_button_create(p);
+    lv_obj_set_size(b, w, 44);
+    lv_obj_set_style_bg_color(b, bg, 0);
+    lv_obj_set_style_bg_opa(b, LV_OPA_40, LV_STATE_DISABLED);
+    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_center(label(b, &eg_sora_16, fg, text));
+    return b;
 }
 
 lv_obj_t *eg_home_create(lv_obj_t *parent, const eg_home_cb_t *cb)
@@ -633,8 +668,10 @@ lv_obj_t *eg_home_create(lv_obj_t *parent, const eg_home_cb_t *cb)
     h->cb = *cb;
     lv_obj_set_user_data(s, h);
 
-    lv_obj_add_event_cb(big_button(s, "Play the computer", EG_PINK, lv_color_white(), 24, 24, 300, 370), home_play_cb, LV_EVENT_CLICKED, h);
-    (void)home_chal_cb;   /* Quick match and Challenge a player (username search) land once the server supports them */
+    /* Three ways to start a game, stacked on the left; your games on the right. */
+    lv_obj_add_event_cb(big_button(s, "Play the computer", EG_PINK, lv_color_white(), 24, 24, 300, 114), home_play_cb, LV_EVENT_CLICKED, h);
+    lv_obj_add_event_cb(big_button(s, "Quick match", EG_CYAN, EG_BG_VOID, 24, 152, 300, 114), home_quick_cb, LV_EVENT_CLICKED, h);
+    lv_obj_add_event_cb(big_button(s, "Challenge a player", EG_YELLOW, EG_BG_VOID, 24, 280, 300, 114), home_find_cb, LV_EVENT_CLICKED, h);
 
     lv_obj_t *gt = label(s, &eg_sora_20_bold, EG_YELLOW, "Your games");
     lv_obj_set_pos(gt, 348, 24);
@@ -660,23 +697,52 @@ void eg_home_set_status(lv_obj_t *screen, const char *msg)
     lv_label_set_text(h->status, msg ? msg : "");
 }
 
+static lv_obj_t *list_row(lv_obj_t *list, bool highlight, lv_color_t edge)
+{
+    lv_obj_t *row = lv_button_create(list);
+    lv_obj_set_size(row, LV_PCT(100), 70);
+    lv_obj_set_style_pad_ver(row, 8, 0);
+    lv_obj_set_style_pad_hor(row, 12, 0);
+    lv_obj_set_style_bg_color(row, EG_SURFACE, 0);
+    lv_obj_set_style_radius(row, 12, 0);
+    lv_obj_set_style_shadow_width(row, 0, 0);
+    lv_obj_set_style_border_width(row, highlight ? 3 : 0, 0);
+    lv_obj_set_style_border_color(row, edge, 0);
+    return row;
+}
+
 void eg_home_set(lv_obj_t *screen, const eg_home_t *d)
 {
     home_t *h = lv_obj_get_user_data(screen);
     lv_obj_clean(h->list);
-    lv_label_set_text(h->status, d->n_games ? "" : "No games in progress.");
+    lv_label_set_text(h->status, d->n_games || d->n_incoming ? "" : "No games in progress.");
+
+    /* Challenges waiting for your answer go first. */
+    for (int i = 0; i < d->n_incoming; i++) {
+        const eg_incoming_t *c = &d->incoming[i];
+        snprintf(h->inc_ids[i], sizeof h->inc_ids[i], "%s", c->id);
+        lv_obj_t *row = list_row(h->list, true, EG_CYAN);
+        lv_obj_remove_flag(row, LV_OBJ_FLAG_CLICKABLE);       /* only the two buttons react */
+        lv_obj_t *n = label(row, &eg_sora_20_bold, EG_FG, c->name[0] ? c->name : "Player");
+        lv_label_set_long_mode(n, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(n, 190);
+        lv_obj_align(n, LV_ALIGN_TOP_LEFT, 0, 0);
+        lv_obj_t *sub = label(row, &eg_sora_16, EG_CYAN, "");
+        if (c->elo > 0) lv_label_set_text_fmt(sub, "Challenges you (%d)", c->elo);
+        else lv_label_set_text(sub, "Challenges you");
+        lv_obj_align(sub, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+        lv_obj_t *no = small_button(row, "Decline", EG_BG_MIST, EG_FG, 92);
+        lv_obj_align(no, LV_ALIGN_RIGHT_MID, 0, 0);
+        lv_obj_add_event_cb(no, home_respond_cb, LV_EVENT_CLICKED, (void *)(intptr_t)(i * 2));
+        lv_obj_t *yes = small_button(row, "Accept", EG_MINT, EG_BG_VOID, 92);
+        lv_obj_align(yes, LV_ALIGN_RIGHT_MID, -100, 0);
+        lv_obj_add_event_cb(yes, home_respond_cb, LV_EVENT_CLICKED, (void *)(intptr_t)(i * 2 + 1));
+    }
+
     for (int i = 0; i < d->n_games; i++) {
         const eg_home_game_t *g = &d->games[i];
         snprintf(h->ids[i], sizeof h->ids[i], "%s", g->id);
-        lv_obj_t *row = lv_button_create(h->list);
-        lv_obj_set_size(row, LV_PCT(100), 70);
-        lv_obj_set_style_pad_ver(row, 8, 0);
-        lv_obj_set_style_pad_hor(row, 12, 0);
-        lv_obj_set_style_bg_color(row, EG_SURFACE, 0);
-        lv_obj_set_style_radius(row, 12, 0);
-        lv_obj_set_style_shadow_width(row, 0, 0);
-        lv_obj_set_style_border_width(row, g->your_turn ? 3 : 0, 0);
-        lv_obj_set_style_border_color(row, EG_PINK, 0);
+        lv_obj_t *row = list_row(h->list, g->your_turn, EG_PINK);
         lv_obj_t *n = label(row, &eg_sora_20_bold, EG_FG, "");
         lv_label_set_text_fmt(n, "vs %s", g->opponent[0] ? g->opponent : "Opponent");
         lv_label_set_long_mode(n, LV_LABEL_LONG_DOT);
@@ -835,6 +901,257 @@ void eg_challenge_set(lv_obj_t *screen, const char *url, const char *status)
         lv_obj_add_flag(c->tile, LV_OBJ_FLAG_HIDDEN);
     }
     lv_label_set_text(c->status, status ? status : "");
+}
+
+/* ---------- quick match ---------- */
+
+typedef struct { void (*cancel)(void); void (*retry)(void); lv_obj_t *msg, *cancel_lbl, *retry_btn; } qm_t;
+
+static void qm_cancel_cb(lv_event_t *e) { qm_t *q = lv_event_get_user_data(e); if (q->cancel) q->cancel(); }
+static void qm_retry_cb(lv_event_t *e) { qm_t *q = lv_event_get_user_data(e); if (q->retry) q->retry(); }
+
+lv_obj_t *eg_qm_create(lv_obj_t *parent, void (*on_cancel)(void), void (*on_retry)(void))
+{
+    lv_obj_t *s = base(parent);
+    qm_t *q = lv_malloc(sizeof *q);
+    memset(q, 0, sizeof *q);
+    q->cancel = on_cancel;
+    q->retry = on_retry;
+    lv_obj_set_user_data(s, q);
+
+    lv_obj_set_pos(label(s, &eg_bungee_28, EG_CYAN, "QUICK MATCH"), 40, 22);
+    lv_obj_t *c = pill(s, "Cancel", EG_SURFACE, 640, 16, 120, 44);
+    q->cancel_lbl = lv_obj_get_child(c, 0);
+    lv_obj_add_event_cb(c, qm_cancel_cb, LV_EVENT_CLICKED, q);
+
+    q->msg = label(s, &eg_sora_20, EG_FG, "Looking for an opponent...");
+    lv_label_set_long_mode(q->msg, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(q->msg, 720);
+    lv_obj_set_pos(q->msg, 40, 150);
+    lv_obj_t *hint = label(s, &eg_sora_16, EG_FG_HAZE, "You get the first player who is also looking.\nYou play with your piece set.");
+    lv_obj_set_pos(hint, 40, 230);
+
+    q->retry_btn = pill(s, "Try again", EG_CYAN, 40, 330, 240, 64);
+    lv_obj_set_style_text_color(lv_obj_get_child(q->retry_btn, 0), EG_BG_VOID, 0);
+    lv_obj_add_event_cb(q->retry_btn, qm_retry_cb, LV_EVENT_CLICKED, q);
+    lv_obj_add_flag(q->retry_btn, LV_OBJ_FLAG_HIDDEN);
+    return s;
+}
+
+void eg_qm_set(lv_obj_t *screen, const char *msg, bool searching)
+{
+    qm_t *q = lv_obj_get_user_data(screen);
+    lv_label_set_text(q->msg, msg ? msg : "");
+    lv_label_set_text(q->cancel_lbl, searching ? "Cancel" : "Back");
+    if (searching) lv_obj_add_flag(q->retry_btn, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_remove_flag(q->retry_btn, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* ---------- challenge a player ---------- */
+
+#define FIND_LIST_Y 126
+#define FIND_LIST_H_KB 130            /* list height while the keyboard is up (keyboard starts at y 264) */
+#define FIND_LIST_H_FULL 330
+
+typedef struct {
+    eg_find_cb_t cb;
+    lv_obj_t *root, *ta, *list, *msg;
+    kbd_t *k;
+    lv_obj_t *panel, *who, *first[3], *send, *status;   /* confirm panel */
+    int n, pick, f;
+    bool sent;
+    eg_user_t users[EG_USERS_MAX];
+} find_t;
+
+static const char *FIRST_API[3] = {"me", "computer", "random"};   /* "computer" = the other player moves first */
+static const char *FIRST_UI[3] = {"Me", "Them", "Random"};
+
+static void find_keyboard(find_t *f, bool up)
+{
+    if (up) lv_obj_remove_flag(f->k->kb, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(f->k->kb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_height(f->list, up ? FIND_LIST_H_KB : FIND_LIST_H_FULL);
+}
+
+static void find_text_cb(lv_event_t *e)
+{
+    find_t *f = lv_event_get_user_data(e);
+    const char *q = lv_textarea_get_text(f->ta);
+    if (strlen(q) < 2) eg_find_set_results(f->root, NULL, 0, "Type at least 2 letters of their name.");
+    else lv_label_set_text(f->msg, "Searching...");
+    if (f->cb.on_query) f->cb.on_query(q);
+}
+static void find_ta_click_cb(lv_event_t *e) { find_keyboard(lv_event_get_user_data(e), true); }
+static void find_enter(void *ctx, lv_obj_t *ta) { (void)ta; find_keyboard(ctx, false); }
+static void find_back_cb(lv_event_t *e) { find_t *f = lv_event_get_user_data(e); if (f->cb.on_back) f->cb.on_back(); }
+static void find_link_cb(lv_event_t *e) { find_t *f = lv_event_get_user_data(e); if (f->cb.on_link) f->cb.on_link(); }
+
+static void find_first_cb(lv_event_t *e)
+{
+    find_t *f = lv_obj_get_user_data(lv_event_get_target(e));   /* each button carries its find_t */
+    f->f = (int)(intptr_t)lv_event_get_user_data(e);
+    seg_paint(f->first, 3, f->f);
+}
+
+static void find_pick_cb(lv_event_t *e)
+{
+    find_t *f = lv_obj_get_user_data(lv_event_get_target(e));
+    eg_find_confirm(f->root, (int)(intptr_t)lv_event_get_user_data(e));
+}
+
+static void find_send_cb(lv_event_t *e)
+{
+    find_t *f = lv_event_get_user_data(e);
+    if (f->pick < 0 || f->pick >= f->n) return;
+    lv_obj_add_flag(f->send, LV_OBJ_FLAG_HIDDEN);              /* one tap, one challenge */
+    lv_label_set_text(f->status, "Sending...");
+    if (f->cb.on_send) f->cb.on_send(f->users[f->pick].id, f->users[f->pick].name, FIRST_API[f->f]);
+}
+
+/* Panel Back: before sending, back to the search; after sending, home. */
+static void find_panel_back_cb(lv_event_t *e)
+{
+    find_t *f = lv_event_get_user_data(e);
+    if (f->sent) { if (f->cb.on_back) f->cb.on_back(); return; }
+    lv_obj_add_flag(f->panel, LV_OBJ_FLAG_HIDDEN);
+}
+
+lv_obj_t *eg_find_create(lv_obj_t *parent, const eg_find_cb_t *cb)
+{
+    lv_obj_t *s = base(parent);
+    find_t *f = lv_malloc(sizeof *f);
+    memset(f, 0, sizeof *f);
+    f->cb = *cb;
+    f->pick = -1;
+    f->root = s;
+    lv_obj_set_user_data(s, f);
+
+    lv_obj_set_pos(label(s, &eg_bungee_28, EG_YELLOW, "CHALLENGE A PLAYER"), 40, 16);
+    back_button(s, find_back_cb, f);
+
+    f->ta = lv_textarea_create(s);
+    lv_textarea_set_one_line(f->ta, true);
+    lv_textarea_set_max_length(f->ta, 30);
+    lv_textarea_set_placeholder_text(f->ta, "Their name");
+    lv_obj_set_size(f->ta, 440, 52);
+    lv_obj_set_pos(f->ta, 40, 66);
+    lv_obj_set_style_bg_color(f->ta, lv_color_hex(0x3A1A85), 0);
+    lv_obj_set_style_text_color(f->ta, EG_FG, 0);
+    lv_obj_set_style_text_font(f->ta, &eg_sora_20, 0);
+    lv_obj_set_style_border_color(f->ta, EG_PINK, 0);
+    lv_obj_set_style_border_width(f->ta, 4, 0);
+    lv_obj_set_style_bg_color(f->ta, EG_PINK, LV_PART_CURSOR | LV_STATE_FOCUSED);
+    lv_obj_add_state(f->ta, LV_STATE_FOCUSED);
+    lv_obj_add_event_cb(f->ta, find_text_cb, LV_EVENT_VALUE_CHANGED, f);
+    lv_obj_add_event_cb(f->ta, find_ta_click_cb, LV_EVENT_CLICKED, f);
+
+    lv_obj_t *link = pill(s, "Share a link", EG_SURFACE, 500, 66, 260, 52);
+    lv_obj_add_event_cb(link, find_link_cb, LV_EVENT_CLICKED, f);
+
+    f->list = lv_obj_create(s);
+    lv_obj_set_size(f->list, 720, FIND_LIST_H_KB);
+    lv_obj_set_pos(f->list, 40, FIND_LIST_Y);
+    lv_obj_set_flex_flow(f->list, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_style_bg_opa(f->list, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(f->list, 0, 0);
+    lv_obj_set_style_pad_all(f->list, 0, 0);
+    lv_obj_set_style_pad_row(f->list, 6, 0);
+    lv_obj_set_scroll_dir(f->list, LV_DIR_VER);
+    f->msg = label(s, &eg_sora_16, EG_FG_MIST, "");
+    lv_obj_set_pos(f->msg, 40, FIND_LIST_Y + 8);
+
+    f->k = kbd_create(s, find_enter, f);
+    lv_keyboard_set_textarea(f->k->kb, f->ta);
+
+    /* Confirm panel covers the screen. */
+    f->panel = base(s);
+    lv_obj_add_flag(f->panel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(label(f->panel, &eg_bungee_28, EG_YELLOW, "CHALLENGE A PLAYER"), 40, 16);
+    lv_obj_add_event_cb(pill(f->panel, "Back", EG_SURFACE, 640, 16, 120, 44), find_panel_back_cb, LV_EVENT_CLICKED, f);
+    f->who = label(f->panel, &eg_sora_20_bold, EG_FG, "");
+    lv_label_set_long_mode(f->who, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(f->who, 720);
+    lv_obj_set_pos(f->who, 40, 90);
+    lv_obj_set_pos(label(f->panel, &eg_sora_20_bold, EG_YELLOW, "Who goes first"), 40, 150);
+    for (int i = 0; i < 3; i++) {
+        f->first[i] = seg_button(f->panel, FIRST_UI[i], 40 + i * 242, 182, 230);
+        lv_obj_set_user_data(f->first[i], f);
+        lv_obj_add_event_cb(f->first[i], find_first_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+    f->f = 0;
+    seg_paint(f->first, 3, f->f);
+    f->send = pill(f->panel, "Send challenge", EG_PINK, 40, 290, 300, 64);
+    lv_obj_add_event_cb(f->send, find_send_cb, LV_EVENT_CLICKED, f);
+    f->status = label(f->panel, &eg_sora_16, EG_FG_HAZE, "");
+    lv_label_set_long_mode(f->status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(f->status, 720);
+    lv_obj_set_pos(f->status, 40, 376);
+
+    eg_find_reset(s);
+    return s;
+}
+
+void eg_find_reset(lv_obj_t *screen)
+{
+    find_t *f = lv_obj_get_user_data(screen);
+    f->sent = false;
+    f->pick = -1;
+    f->n = 0;
+    lv_obj_add_flag(f->panel, LV_OBJ_FLAG_HIDDEN);
+    lv_textarea_set_text(f->ta, "");          /* fires VALUE_CHANGED: shows the 2-letter hint */
+    lv_obj_clean(f->list);
+    lv_label_set_text(f->msg, "Type at least 2 letters of their name.");
+    find_keyboard(f, true);
+}
+
+void eg_find_set_results(lv_obj_t *screen, const eg_user_t *users, int n, const char *msg)
+{
+    find_t *f = lv_obj_get_user_data(screen);
+    lv_obj_clean(f->list);
+    f->n = 0;
+    for (int i = 0; users && i < n && i < EG_USERS_MAX; i++) {
+        f->users[i] = users[i];
+        f->n++;
+        lv_obj_t *row = lv_button_create(f->list);
+        lv_obj_set_size(row, LV_PCT(100), 58);
+        lv_obj_set_style_pad_hor(row, 14, 0);
+        lv_obj_set_style_bg_color(row, EG_SURFACE, 0);
+        lv_obj_set_style_radius(row, 12, 0);
+        lv_obj_set_style_shadow_width(row, 0, 0);
+        lv_obj_t *n_l = label(row, &eg_sora_20_bold, EG_FG, users[i].name[0] ? users[i].name : "Player");
+        lv_label_set_long_mode(n_l, LV_LABEL_LONG_DOT);
+        lv_obj_set_width(n_l, 520);
+        lv_obj_align(n_l, LV_ALIGN_LEFT_MID, 0, 0);
+        if (users[i].elo > 0) {
+            lv_obj_t *e = label(row, &eg_vt323_36, EG_CYAN, "");
+            lv_label_set_text_fmt(e, "%d", users[i].elo);
+            lv_obj_align(e, LV_ALIGN_RIGHT_MID, 0, 0);
+        }
+        lv_obj_set_user_data(row, f);
+        lv_obj_add_event_cb(row, find_pick_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+    lv_label_set_text(f->msg, f->n ? "" : (msg ? msg : ""));
+}
+
+void eg_find_confirm(lv_obj_t *screen, int index)
+{
+    find_t *f = lv_obj_get_user_data(screen);
+    if (index < 0 || index >= f->n) return;
+    f->pick = index;
+    f->sent = false;
+    lv_label_set_text_fmt(f->who, "Challenge %s?", f->users[index].name[0] ? f->users[index].name : "this player");
+    lv_obj_remove_flag(f->send, LV_OBJ_FLAG_HIDDEN);
+    lv_label_set_text(f->status, "They get it in their games on endgam.es, the app, or their board.");
+    lv_obj_remove_flag(f->panel, LV_OBJ_FLAG_HIDDEN);
+}
+
+void eg_find_set_status(lv_obj_t *screen, const char *msg, bool sent)
+{
+    find_t *f = lv_obj_get_user_data(screen);
+    f->sent = sent;
+    lv_label_set_text(f->status, msg ? msg : "");
+    if (sent) lv_obj_add_flag(f->send, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_remove_flag(f->send, LV_OBJ_FLAG_HIDDEN);
 }
 
 /* ---------- Sets tab ---------- */

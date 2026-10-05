@@ -80,6 +80,7 @@ int main(int argc, char **argv)
         if (argc > 3) lv_dropdown_open(lv_obj_get_child(w, 1));
     } else if (strcmp(which, "idle") == 0 || strcmp(which, "home") == 0 || strcmp(which, "sets") == 0) {
         static eg_home_t h = {.name = "deltajuliet", .elo = 1240, .n_games = 3, .active_set = "s1", .n_sets = 3,
+            .n_incoming = 1, .incoming = {{"c1", "queenbee", 1820}},
             .games = {{"g1", "Stockfish", true, "intermediate", 'w', true, 14},
                       {"g2", "magnus_fan", false, "", 'b', false, 22},
                       {"g3", "Stockfish", true, "expert", 'b', false, 3}},
@@ -87,6 +88,16 @@ int main(int argc, char **argv)
         for (int i = 0; i < 3; i++) { strcpy(h.sets[i].preview_k, "wk"); strcpy(h.sets[i].preview_n, "wn"); }
         if (strcmp(which, "sets") == 0) eg_sets_set(eg_sets_create(lv_screen_active(), NULL), &h);
         else { eg_home_cb_t cb = {0}; eg_home_set(eg_home_create(lv_screen_active(), &cb), &h); }
+    } else if (strcmp(which, "quick") == 0) {
+        eg_qm_set(eg_qm_create(lv_screen_active(), NULL, NULL), "Looking for an opponent... 0:42", true);
+    } else if (strcmp(which, "quick-none") == 0) {
+        eg_qm_set(eg_qm_create(lv_screen_active(), NULL, NULL), "No one else is looking right now. Try again, or play the computer.", false);
+    } else if (strcmp(which, "find") == 0 || strcmp(which, "find-confirm") == 0) {
+        static const eg_user_t u[] = {{"u1", "magnus_fan", 1655}, {"u2", "magnolia", 1203}, {"u3", "magpie", 980}};
+        eg_find_cb_t fcb = {0};
+        lv_obj_t *f = eg_find_create(lv_screen_active(), &fcb);
+        eg_find_set_results(f, u, 3, NULL);
+        if (strcmp(which, "find-confirm") == 0) eg_find_confirm(f, 0);
     } else if (strcmp(which, "make") == 0) {
         eg_make_create(lv_screen_active());
     } else if (strcmp(which, "rank") == 0) {

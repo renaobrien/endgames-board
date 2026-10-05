@@ -5,6 +5,7 @@
 #include "esp_heap_caps.h"
 #include "esp_http_client.h"
 #include "esp_log.h"
+#include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -287,6 +288,17 @@ eg_result_t eg_api_home(const char *token, eg_home_t *out)
             h->move_count = cJSON_IsNumber(mc) ? mc->valueint : 0;
             if (h->id[0]) out->n_games++;
         }
+        const cJSON *ic;
+        cJSON_ArrayForEach(ic, cJSON_GetObjectItem(j, "incomingChallenges")) {
+            if (out->n_incoming >= EG_HOME_MAX_INCOMING) break;
+            eg_incoming_t *c = &out->incoming[out->n_incoming];
+            copy_str(c->id, sizeof c->id, cJSON_GetObjectItem(ic, "id"));
+            const cJSON *from = cJSON_GetObjectItem(ic, "from");
+            copy_str(c->name, sizeof c->name, cJSON_GetObjectItem(from, "name"));
+            const cJSON *el = cJSON_GetObjectItem(from, "elo");
+            c->elo = cJSON_IsNumber(el) ? el->valueint : -1;
+            if (c->id[0]) out->n_incoming++;
+        }
         copy_str(out->active_set, sizeof out->active_set, cJSON_GetObjectItem(j, "activeSetId"));
         const cJSON *st2;
         cJSON_ArrayForEach(st2, cJSON_GetObjectItem(j, "sets")) {
@@ -388,6 +400,121 @@ eg_result_t eg_api_leaderboard(const char *token, eg_rank_t *out)
         if (cJSON_IsNumber(ye)) out->you_elo = ye->valueint;
         r = EG_OK;
         cJSON_Delete(j);
+    }
+    heap_caps_free(body);
+    return r;
+}
+
+/* ---------- people: quick match and direct challenges ---------- */
+
+eg_result_t eg_api_quick_match(const char *token, const char *action, eg_qm_status_t *status, eg_game_t *game)
+{
+    char *body = NULL;
+    int st;
+    if (action) {
+        char req[40];
+        snprintf(req, sizeof req, "{\"action\":\"%s\"}", action);
+        st = request(HTTP_METHOD_POST, "board-quick-match", token, req, &body);
+    } else {
+        st = request(HTTP_METHOD_GET, "board-quick-match", token, NULL, &body);
+    }
+    eg_result_t r = EG_ERROR;
+    *status = EG_QM_IDLE;
+    if (st == 401) r = EG_UNAUTHORIZED;
+    else if (st == 200 && body) {
+        cJSON *j = cJSON_Parse(body);
+        const cJSON *s = cJSON_GetObjectItem(j, "status");
+        if (cJSON_IsString(s)) {
+            r = EG_OK;
+            if (strcmp(s->valuestring, "waiting") == 0) *status = EG_QM_WAITING;
+            else if (strcmp(s->valuestring, "matched") == 0) {
+                *status = EG_QM_MATCHED;
+                if (!parse_game(cJSON_GetObjectItem(j, "game"), game)) r = EG_NO_GAME;
+            }
+        }
+        cJSON_Delete(j);
+    }
+    heap_caps_free(body);
+    return r;
+}
+
+static void url_encode(char *dst, size_t n, const char *src)
+{
+    static const char hex[] = "0123456789ABCDEF";
+    size_t o = 0;
+    for (const unsigned char *p = (const unsigned char *)src; *p && o + 4 < n; p++) {
+        if (isalnum(*p) || *p == '-' || *p == '_' || *p == '.' || *p == '~') dst[o++] = (char)*p;
+        else { dst[o++] = '%'; dst[o++] = hex[*p >> 4]; dst[o++] = hex[*p & 15]; }
+    }
+    dst[o] = 0;
+}
+
+eg_result_t eg_api_users(const char *token, const char *q, eg_user_t users[EG_USERS_MAX], int *n)
+{
+    *n = 0;
+    char enc[100], path[140];
+    url_encode(enc, sizeof enc, q);
+    snprintf(path, sizeof path, "board-users?q=%s", enc);
+    char *body = NULL;
+    int st = request(HTTP_METHOD_GET, path, token, NULL, &body);
+    eg_result_t r = EG_ERROR;
+    if (st == 401) r = EG_UNAUTHORIZED;
+    else if (st == 200 && body) {
+        cJSON *j = cJSON_Parse(body);
+        const cJSON *u;
+        cJSON_ArrayForEach(u, cJSON_GetObjectItem(j, "users")) {
+            if (*n >= EG_USERS_MAX) break;
+            eg_user_t *e = &users[*n];
+            memset(e, 0, sizeof *e);
+            copy_str(e->id, sizeof e->id, cJSON_GetObjectItem(u, "id"));
+            copy_str(e->name, sizeof e->name, cJSON_GetObjectItem(u, "name"));
+            const cJSON *el = cJSON_GetObjectItem(u, "elo");
+            e->elo = cJSON_IsNumber(el) ? el->valueint : -1;
+            if (e->id[0]) (*n)++;
+        }
+        r = j ? EG_OK : EG_ERROR;
+        cJSON_Delete(j);
+    }
+    heap_caps_free(body);
+    return r;
+}
+
+/* Ids come from the server (UUIDs). Refuse anything that would break the JSON body. */
+static bool safe_id(const char *s)
+{
+    if (!s || !s[0]) return false;
+    for (; *s; s++) if (!(isalnum((unsigned char)*s) || *s == '-')) return false;
+    return true;
+}
+
+eg_result_t eg_api_challenge_player(const char *token, const char *opponent_id, const char *first)
+{
+    if (!safe_id(opponent_id)) return EG_ERROR;
+    char req[160];
+    snprintf(req, sizeof req, "{\"mode\":\"challenge\",\"opponentId\":\"%s\",\"first\":\"%s\"}", opponent_id, first);
+    char *body = NULL;
+    int st = request(HTTP_METHOD_POST, "board-new-game", token, req, &body);
+    heap_caps_free(body);
+    return st == 200 ? EG_OK : st == 409 ? EG_CONFLICT : st == 401 ? EG_UNAUTHORIZED : EG_ERROR;
+}
+
+eg_result_t eg_api_challenge_respond(const char *token, const char *id, bool accept, eg_game_t *out)
+{
+    if (!safe_id(id)) return EG_ERROR;
+    char req[120];
+    snprintf(req, sizeof req, "{\"id\":\"%s\",\"accept\":%s}", id, accept ? "true" : "false");
+    char *body = NULL;
+    int st = request(HTTP_METHOD_POST, "board-challenge-respond", token, req, &body);
+    eg_result_t r = EG_ERROR;
+    if (st == 401) r = EG_UNAUTHORIZED;
+    else if (st == 404 || st == 409) r = EG_CONFLICT;
+    else if (st == 200) {
+        r = EG_OK;
+        if (accept) {
+            cJSON *j = body ? cJSON_Parse(body) : NULL;
+            if (!parse_game(cJSON_GetObjectItem(j, "game"), out)) r = EG_NO_GAME;
+            cJSON_Delete(j);
+        }
     }
     heap_caps_free(body);
     return r;
