@@ -57,7 +57,7 @@ void eg_qm_set(lv_obj_t *screen, const char *msg, bool searching);
 /* Challenge a player: search by name, pick a player, pick who goes first, send. */
 typedef struct {
     void (*on_query)(const char *q);                                       /* every edit; the caller debounces */
-    void (*on_send)(const char *user_id, const char *name, const char *first);   /* first: me | computer | random */
+    void (*on_send)(const char *user_id, const char *name, const char *first, const char *time_control);   /* first: me | computer | random; time_control "" = untimed */
     void (*on_link)(void);                                                 /* "Share a link" (the QR challenge) */
     void (*on_back)(void);
 } eg_find_cb_t;

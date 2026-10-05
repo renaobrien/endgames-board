@@ -65,13 +65,24 @@ Optional query: `?gameId=uuid` to fetch a specific game (any status).
     "lastMove": { "from": "e2", "to": "e4", "san": "e4" },
     "moves": ["e4"],
     "legalMoves": [],
-    "opponent": { "name": "magnus_fan", "isAi": false, "difficulty": null },
+    "timeControl": "5+0",
+    "clock": { "incrementMs": 0, "yourMs": 241500, "opponentMs": 300000, "running": "you" },
+    "endReason": null,
+    "opponent": { "name": "magnus_fan", "isAi": false, "difficulty": null, "pfpUrl": "https://.../avatar.png" },
     "updatedAt": "2026-10-03T19:30:00Z"
   }
 }
 ```
 
-`moves` is every move so far in SAN, oldest first (up to 500), for the move list. There are no clock fields: Endgames games are untimed today. If clocks are added they arrive as new optional fields.
+`moves` is every move so far in SAN, oldest first (up to 500), for the move list. **Clocks.** A game is timed or untimed. `timeControl` is the preset (`3+2`, `5+0`, `10+0`, `15+10`: minutes plus seconds added per move), or `null`. When it is `null`, `clock` is `null` too.
+
+`clock.yourMs` and `clock.opponentMs` are the time each side has left **at the moment of the response**. The server has already subtracted the time the running clock has used. Start counting down when the response arrives, and replace your numbers on every response. `clock.running` is `"you"`, `"opponent"` or `null` (not started yet, or the game is over). `incrementMs` is added to a player's clock after each of their moves.
+
+Neither clock runs until both players have made their first move. If either first move has not happened within 2 minutes, the game ends as `ABANDONED` with no rating change.
+
+When a clock reaches zero the server ends the game: the player out of time loses, unless the other player cannot possibly checkmate, which is a draw. The board does not send anything for this. When your own countdown reaches zero, call `board-game` right away: the server settles the game and the response shows the result. The server gives a mover 1 second of grace per move for network delay.
+
+`endReason` is `null` while the game is in progress. Afterwards it is one of `checkmate`, `draw` (stalemate and other draws), `resign`, `timeout`, `abandoned`. Games finished before clocks existed have `null`.
 
 `opponent.isAi` is true in games against the computer, with `difficulty` set (`beginner`, `intermediate`, `advanced`, `expert`; computer games started on the website before difficulty was stored read as `intermediate`). For people, `difficulty` is `null`.
 
@@ -79,7 +90,7 @@ Optional query: `?gameId=uuid` to fetch a specific game (any status).
 
 `legalMoves` lists your moves in UCI form (`e2e4`, `e7e8q`) when it's your turn, and is empty otherwise. Use it to highlight squares after a tap.
 
-Polling: every 10 seconds while waiting for the opponent, every 60 seconds when idle. Redraw only when `moveCount` or `status` changes.
+Polling: every 10 seconds while waiting for the opponent (every 5 seconds in a timed game), every 60 seconds when idle. Redraw only when `moveCount` or `status` changes.
 
 ### Make a move: `POST /board-move`
 
@@ -132,26 +143,34 @@ One call for the home screen.
 ```json
 200 {
   "apiVersion": 1,
-  "profile": { "name": "deltajuliet", "elo": 1240, "ranked": true },
+  "profile": { "name": "deltajuliet", "pfpUrl": "https://.../avatar.png", "elo": 1240, "ranked": true },
   "games": [
     {
       "id": "uuid",
-      "opponent": { "name": "Stockfish", "isAi": true, "difficulty": "intermediate" },
+      "opponent": { "name": "queenbee", "isAi": false, "difficulty": null, "pfpUrl": "https://.../avatar.png" },
       "yourColor": "white",
       "yourTurn": true,
       "status": "IN_PROGRESS",
       "moveCount": 14,
+      "timeControl": "5+0",
+      "yourMs": 241500,
+      "opponentMs": 300000,
+      "running": "you",
       "updatedAt": "2026-10-04T19:30:00Z"
     }
   ],
-  "incomingChallenges": [ { "id": "uuid", "from": { "name": "queenbee", "elo": 1820 } } ],
+  "incomingChallenges": [ { "id": "uuid", "from": { "name": "queenbee", "elo": 1820, "pfpUrl": "https://.../avatar.png" } } ],
   "activeSetId": "uuid-or-default",
   "sets": [ { "id": "uuid-or-default", "name": "Default", "kind": "default",
               "preview": { "wk": "https://.../wk.png", "wn": "https://.../wn.png" } } ]
 }
 ```
 
+In timed games the list items carry `timeControl`, `yourMs`, `opponentMs` and `running` (same meaning as `clock` in `board-game`); they are `null` in untimed games.
+
 `games` holds your in-progress games (against people and the computer), your-turn first, then most recently updated, up to 20. You can have at most 20 in progress; `board-new-game` returns `429` above that. `incomingChallenges` lists direct challenges waiting for your answer (see `board-challenge-respond`). `sets` lists the built-in set plus sets you made. `elo` is `null` and `ranked` false before the first ranked game.
+
+`pfpUrl` is the player's profile picture: a public https link to a 256x256 PNG for pictures set on the website (Account, Profile picture). It is `null` when the player has not set one, and always `null` for the computer. Old accounts may hold a picture from another site (often a JPEG), so check the content type before decoding. Cache by URL: a new picture gets a new URL.
 
 ### Start a game: `POST /board-new-game`
 
@@ -169,7 +188,7 @@ Challenge a friend:
 { "mode": "challenge", "color": "random" }
 ```
 
-Creates an open challenge with your active set. `color` is the color you play (`random` picks one). Returns:
+Creates an open challenge with your active set. `color` is the color you play (`random` picks one). Add `"timeControl": "5+0"` for a timed game (`3+2`, `5+0`, `10+0`, `15+10`); leave it out for untimed. Returns:
 
 ```json
 200 { "apiVersion": 1, "challenge": { "id": "uuid", "url": "https://endgam.es/?challenge=uuid", "expiresAt": "..." } }
@@ -180,8 +199,10 @@ The board shows `url` as a QR. When someone accepts, the game appears in `board-
 Challenge a specific player (find them with `board-users`):
 
 ```json
-{ "mode": "challenge", "opponentId": "uuid", "first": "me" }
+{ "mode": "challenge", "opponentId": "uuid", "first": "me", "timeControl": "5+0" }
 ```
+
+`timeControl` is optional (untimed when left out). It is rejected with `400` for computer games, which are always untimed, and for any value outside the list above.
 
 `first` is `me`, `computer` or `random`; here `computer` means the other player moves first. Returns:
 
@@ -211,7 +232,7 @@ Accept returns `200 { "apiVersion": 1, "game": { ... } }` in the `board-game` sh
 
 ### Quick match: `POST` and `GET /board-quick-match`
 
-Pairs you with the next waiting player.
+Pairs you with the next waiting player. Quick match games are timed: `10+0` unless you send `"timeControl"` (`3+2`, `5+0`, `10+0`, `15+10`) with `join`. You are only paired with a player who asked for the same control.
 
 ```json
 POST { "action": "join" }    or    { "action": "cancel" }
@@ -266,6 +287,20 @@ Returns the finished `game`. Resigning a game that's already over returns `409`.
 ```
 
 Sets your active set (the same one the website uses). `board-pieces` then returns it.
+
+### Rename or delete a set: `POST /board-set-edit`
+
+```json
+{ "setId": "uuid", "action": "rename", "name": "Vaporwave Rena" }
+{ "setId": "uuid", "action": "delete" }
+```
+
+Only your own sets. `"default"` can't be edited.
+
+- `rename`: `name` is trimmed, 1 to 32 characters.
+- `delete`: hides the set (`is_hidden = true`), the same as deleting on the website, so it can be restored there. If it was your active set, your active set goes back to the default.
+
+Returns `200 { "ok": true, "activeSetId": "uuid-or-default" }`. `404` if the set doesn't exist, is already deleted, or isn't yours. `400` for a bad body or name.
 
 ## Versioning
 

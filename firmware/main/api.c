@@ -105,7 +105,6 @@ static bool parse_game(const cJSON *game, eg_game_t *g)
 {
     if (!cJSON_IsObject(game)) return false;
     memset(g, 0, sizeof *g);
-    g->clock_you_s = g->clock_opp_s = -1;
     copy_str(g->id, sizeof g->id, cJSON_GetObjectItem(game, "id"));
     const cJSON *fen = cJSON_GetObjectItem(game, "fen");
     if (!cJSON_IsString(fen) || !eg_parse_fen(g, fen->valuestring)) return false;
@@ -125,6 +124,18 @@ static bool parse_game(const cJSON *game, eg_game_t *g)
     copy_str(g->opponent, sizeof g->opponent, cJSON_GetObjectItem(opp, "name"));
     g->opp_ai = cJSON_IsTrue(cJSON_GetObjectItem(opp, "isAi"));
     copy_str(g->opp_difficulty, sizeof g->opp_difficulty, cJSON_GetObjectItem(opp, "difficulty"));
+    copy_str(g->time_control, sizeof g->time_control, cJSON_GetObjectItem(game, "timeControl"));
+    const cJSON *clk = cJSON_GetObjectItem(game, "clock");
+    if (g->time_control[0] && cJSON_IsObject(clk)) {
+        const cJSON *v;
+        g->timed = true;
+        if (cJSON_IsNumber(v = cJSON_GetObjectItem(clk, "yourMs"))) g->you_ms = (int32_t)v->valuedouble;
+        if (cJSON_IsNumber(v = cJSON_GetObjectItem(clk, "opponentMs"))) g->opp_ms = (int32_t)v->valuedouble;
+        if (cJSON_IsNumber(v = cJSON_GetObjectItem(clk, "incrementMs"))) g->inc_ms = (int32_t)v->valuedouble;
+        v = cJSON_GetObjectItem(clk, "running");
+        if (cJSON_IsString(v)) g->running = strcmp(v->valuestring, "you") == 0 ? 'y' : strcmp(v->valuestring, "opponent") == 0 ? 'o' : 0;
+    }
+    copy_str(g->end_reason, sizeof g->end_reason, cJSON_GetObjectItem(game, "endReason"));
     const cJSON *legal = cJSON_GetObjectItem(game, "legalMoves");
     cJSON *it;
     cJSON_ArrayForEach(it, legal) {
@@ -487,11 +498,12 @@ static bool safe_id(const char *s)
     return true;
 }
 
-eg_result_t eg_api_challenge_player(const char *token, const char *opponent_id, const char *first)
+eg_result_t eg_api_challenge_player(const char *token, const char *opponent_id, const char *first, const char *time_control)
 {
     if (!safe_id(opponent_id)) return EG_ERROR;
-    char req[160];
-    snprintf(req, sizeof req, "{\"mode\":\"challenge\",\"opponentId\":\"%s\",\"first\":\"%s\"}", opponent_id, first);
+    char req[200], tc[40] = "";
+    if (time_control && time_control[0]) snprintf(tc, sizeof tc, ",\"timeControl\":\"%.7s\"", time_control);
+    snprintf(req, sizeof req, "{\"mode\":\"challenge\",\"opponentId\":\"%s\",\"first\":\"%s\"%s}", opponent_id, first, tc);
     char *body = NULL;
     int st = request(HTTP_METHOD_POST, "board-new-game", token, req, &body);
     heap_caps_free(body);

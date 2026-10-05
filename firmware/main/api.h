@@ -90,7 +90,7 @@ eg_result_t eg_api_users(const char *token, const char *q, eg_user_t users[EG_US
 
 /* POST /board-new-game {mode:"challenge", opponentId, first}. first: me | computer (they move first) | random.
  * EG_CONFLICT: you already have a pending challenge with this player. */
-eg_result_t eg_api_challenge_player(const char *token, const char *opponent_id, const char *first);
+eg_result_t eg_api_challenge_player(const char *token, const char *opponent_id, const char *first, const char *time_control);   /* time_control NULL or "" = untimed */
 
 /* POST /board-challenge-respond {id, accept}. Accept: EG_OK and *out is the new game (EG_NO_GAME if it didn't come back).
  * Decline: EG_OK. EG_CONFLICT: the challenge expired, is gone, or was already answered. */

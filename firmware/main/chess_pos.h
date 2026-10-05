@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 #pragma once
+#include <stdint.h>
 #include <stdbool.h>
 
 #define EG_MAX_LEGAL 256
@@ -23,7 +24,11 @@ typedef struct {
     char moves[160][8];      /* last 160 SAN moves, oldest first */
     int  moves_n;
     int  moves_first_ply;    /* ply number (0 = white's first move) of moves[0] */
-    int  clock_you_s, clock_opp_s;   /* -1 when the API sends no clocks */
+    bool timed;                      /* timeControl set: clock fields below are live */
+    char time_control[8];            /* "5+0" etc., empty when untimed */
+    int32_t you_ms, opp_ms, inc_ms;  /* time left at the moment of the response */
+    char running;                    /* 'y' your clock, 'o' theirs, 0 neither */
+    char end_reason[12];             /* checkmate | draw | resign | timeout | abandoned, empty in progress */
 } eg_game_t;
 
 /* Fill g->board and the turn flag from a FEN string. Returns false on a malformed FEN. */

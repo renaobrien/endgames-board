@@ -11,7 +11,7 @@ BIN=$FW/firmware/release/endgames-board-$V-update.bin
 # 1. Save the firmware source in its own repo
 cd "$FW"
 rm -f .git/HEAD.lock .git/index.lock .git/objects/maintenance.lock
-git add -A firmware docs/screenshots
+git add -A firmware docs/screenshots protocol
 git diff --cached --quiet || git commit -m "firmware $V"
 git push origin HEAD 2>/dev/null || echo "(firmware repo has no remote push; saved locally)"
 

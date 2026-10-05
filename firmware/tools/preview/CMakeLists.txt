@@ -17,5 +17,5 @@ add_executable(preview
   preview.c pieces_sim.c
   ${MAIN}/ui_game.c ${MAIN}/ui_screens.c ${MAIN}/chess_pos.c ${FONTS})
 target_include_directories(preview PRIVATE ${MAIN})
-target_compile_definitions(preview PRIVATE LV_CONF_INCLUDE_SIMPLE)
+target_compile_definitions(preview PRIVATE LV_CONF_INCLUDE_SIMPLE EG_SET_EDIT=1)
 target_link_libraries(preview PRIVATE lvgl)

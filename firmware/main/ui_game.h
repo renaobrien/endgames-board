@@ -9,6 +9,7 @@ typedef struct {
     void (*on_menu_forget)(void);   /* "Forget this board": wipe token, go back to pairing */
     void (*on_menu_wifi)(void);     /* "Wi-Fi settings" */
     void (*on_menu_home)(void);     /* "Home": back to the home screen; the game keeps going */
+    void (*on_clock_zero)(void);    /* a running clock hit zero: fetch the game now so the server settles it */
 } eg_game_cb_t;
 
 /* Build the game screen under `parent` (800x480). */
@@ -16,3 +17,6 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb);
 
 /* Redraw from new game data. Call only when moveCount or status changed, or after a 409/422. */
 void eg_game_set(lv_obj_t *screen, const eg_game_t *g);
+
+/* Fresh clock numbers from any response for the game on screen (call on every poll, not only on changes). */
+void eg_game_clock(lv_obj_t *screen, const eg_game_t *g);

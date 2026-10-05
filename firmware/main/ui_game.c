@@ -34,6 +34,10 @@ typedef struct {
     lv_obj_t *btn_moves, *btn_menu;
     lv_obj_t *promo, *menu, *drawer, *drawer_list;
     bool sent;               /* our move is on its way; board already shows it */
+    /* clocks (timed games) */
+    lv_obj_t *clk_you, *clk_opp;
+    uint32_t clk_at;         /* lv_tick when you_ms / opp_ms were received */
+    bool zero_sent;          /* asked the server to settle a clock that reached zero */
 } ui_t;
 
 static ui_t *U(lv_obj_t *screen) { return (ui_t *)lv_obj_get_user_data(screen); }
@@ -200,7 +204,7 @@ static int missing(const eg_game_t *g, char color, int out[5])
 static void draw_caps(lv_obj_t *row, const int taken[5], char taken_color, int lead)
 {
     lv_obj_clean(row);
-    int x = 0, y = 0, w = lv_obj_get_width(row);
+    int x = 0, y = 0, w = RAIL_W;               /* fixed: layout may not have run yet */
     for (int k = 0; k < 5; k++) {
         for (int n = 0; n < taken[k]; n++) {
             const void *src = eg_piece_src(taken_color, CAP_ORDER[k]);
@@ -250,16 +254,96 @@ static void rebuild_moves(ui_t *u)
     lv_obj_scroll_to_y(u->drawer_list, LV_COORD_MAX, LV_ANIM_OFF);
 }
 
+/* ---------- clocks ---------- */
+
+#define LOW_MS 30000         /* your clock turns magenta and pulses under 30 s */
+
+static lv_obj_t *mk_clock(lv_obj_t *parent, int x, int y)
+{
+    lv_obj_t *c = lv_obj_create(parent);
+    plain(c);
+    lv_obj_set_size(c, 80, 40);
+    lv_obj_set_pos(c, x, y);
+    lv_obj_set_style_radius(c, 10, 0);
+    lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
+    lv_obj_set_style_bg_color(c, EG_SURFACE, 0);
+    lv_obj_t *l = mk_label(c, &eg_vt323_36, EG_FG_MIST, "");
+    lv_obj_center(l);
+    lv_obj_add_flag(c, LV_OBJ_FLAG_HIDDEN);
+    return c;
+}
+
+static void clock_text(char out[12], int32_t ms)
+{
+    if (ms < 0) ms = 0;
+    if (ms < 10000) { snprintf(out, 12, "%d.%d", (int)(ms / 1000), (int)(ms % 1000 / 100)); return; }
+    int32_t s = (ms + 999) / 1000;      /* never show 0:00 while time is left */
+    snprintf(out, 12, "%d:%02d", (int)(s / 60), (int)(s % 60));
+}
+
+static void paint_clock(lv_obj_t *c, int32_t ms, bool running, bool mine, uint32_t now)
+{
+    char t[12];
+    clock_text(t, ms);
+    lv_obj_t *l = lv_obj_get_child(c, 0);
+    lv_label_set_text(l, t);
+    bool low = ms <= LOW_MS;
+    lv_color_t fg = !running ? EG_FG_MIST : low ? EG_MAGENTA : mine ? EG_CYAN : EG_PINK;
+    lv_color_t bg = EG_SURFACE;
+    if (running && mine && low && (now / 500) % 2) { bg = EG_MAGENTA; fg = EG_FG; }   /* pulse: no speaker, so it has to be seen */
+    lv_obj_set_style_text_color(l, fg, 0);
+    lv_obj_set_style_bg_color(c, bg, 0);
+    lv_obj_set_style_border_width(c, running ? 2 : 0, 0);
+    lv_obj_set_style_border_color(c, fg, 0);
+}
+
+static void clock_tick(lv_timer_t *t)
+{
+    ui_t *u = lv_timer_get_user_data(t);
+    if (!u->g.timed) return;
+    uint32_t now = lv_tick_get();
+    int32_t used = (int32_t)(now - u->clk_at);
+    bool live = u->g.in_progress;
+    int32_t you = u->g.you_ms - (live && u->g.running == 'y' ? used : 0);
+    int32_t opp = u->g.opp_ms - (live && u->g.running == 'o' ? used : 0);
+    paint_clock(u->clk_you, you, live && u->g.running == 'y', true, now);
+    paint_clock(u->clk_opp, opp, live && u->g.running == 'o', false, now);
+    if (live && u->g.running && (you <= 0 || opp <= 0) && !u->zero_sent) {
+        u->zero_sent = true;                 /* the server settles it; ask now instead of at the next poll */
+        if (u->cb.on_clock_zero) u->cb.on_clock_zero();
+    }
+}
+
+static void clocks_from(ui_t *u, const eg_game_t *g)
+{
+    u->g.timed = g->timed;
+    u->g.you_ms = g->you_ms;
+    u->g.opp_ms = g->opp_ms;
+    u->g.running = g->running;
+    u->clk_at = lv_tick_get();
+    u->zero_sent = false;
+    if (g->timed) { lv_obj_remove_flag(u->clk_you, LV_OBJ_FLAG_HIDDEN); lv_obj_remove_flag(u->clk_opp, LV_OBJ_FLAG_HIDDEN); }
+    else { lv_obj_add_flag(u->clk_you, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(u->clk_opp, LV_OBJ_FLAG_HIDDEN); }
+}
+
+void eg_game_clock(lv_obj_t *screen, const eg_game_t *g)
+{
+    ui_t *u = U(screen);
+    if (strcmp(u->g.id, g->id) != 0) return;
+    clocks_from(u, g);
+}
+
 static void set_status(ui_t *u)
 {
     const char *txt;
     lv_color_t col = EG_FG_HAZE;
     if (!u->g.in_progress) {
-        if (strcmp(u->g.status, "DRAW") == 0) txt = "Draw";
+        bool on_time = strcmp(u->g.end_reason, "timeout") == 0;
+        if (strcmp(u->g.status, "DRAW") == 0) txt = on_time ? "Draw: time ran out" : "Draw";
         else if (strcmp(u->g.status, "ABANDONED") == 0) txt = "Game abandoned";
         else {
             bool you_won = (strcmp(u->g.status, "WHITE_WON") == 0) == u->g.you_white;
-            txt = you_won ? "You won" : "You lost";
+            txt = you_won ? (on_time ? "You won on time" : "You won") : (on_time ? "You lost on time" : "You lost");
             col = you_won ? EG_MINT : EG_MAGENTA;
         }
     } else if (u->g.your_turn && !u->sent) {
@@ -693,7 +777,11 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
     u->you_caps = lv_obj_create(left);
     plain(u->you_caps);
     lv_obj_set_size(u->you_caps, RAIL_W, 30);
-    lv_obj_set_pos(u->you_caps, 0, 384);
+    lv_obj_set_pos(u->you_caps, 0, 368);
+
+    u->clk_opp = mk_clock(left, 72, 30);
+    u->clk_you = mk_clock(left, 0, 432);
+    lv_timer_create(clock_tick, 100, u);
 
     /* right rail: Moves and Menu */
     lv_obj_t *right = lv_obj_create(scr);
@@ -725,5 +813,6 @@ void eg_game_set(lv_obj_t *screen, const eg_game_t *g)
     if (new_game) { close_overlay(&u->menu); close_overlay(&u->drawer); u->drawer_list = NULL; }
     redraw_board(u);
     redraw_panel(u);
+    clocks_from(u, g);
     if (opp_moved) animate_last_move(u);
 }

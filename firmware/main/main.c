@@ -118,7 +118,7 @@ static void on_menu_wifi(void)
  * the network task picks up within 250 ms. */
 
 static struct {
-    volatile bool home, ai, challenge, open, set, resign, rank, thumbs, sets, set_edit;
+    volatile bool home, ai, challenge, open, set, resign, rank, thumbs, sets, set_edit, poll_now;
     volatile bool qm_join, qm_cancel, search, chal_send, respond, respond_accept;
     char difficulty[16], color[8], game_id[40], set_id[48];
     char query[32], opp_id[40], opp_name[33], first[10], chal_id[40];
@@ -160,8 +160,10 @@ static void on_find_query(const char *q)
     req.search_at = xTaskGetTickCount() + pdMS_TO_TICKS(400);
     req.search = strlen(req.query) >= 2;
 }
-static void on_find_send(const char *id, const char *name, const char *first)
+static char chal_tc[8];
+static void on_find_send(const char *id, const char *name, const char *first, const char *time_control)
 {
+    snprintf(chal_tc, sizeof chal_tc, "%s", time_control ? time_control : "");
     snprintf(req.opp_id, sizeof req.opp_id, "%s", id);
     snprintf(req.opp_name, sizeof req.opp_name, "%s", name[0] ? name : "them");
     snprintf(req.first, sizeof req.first, "%s", first);
@@ -211,6 +213,7 @@ static void on_set_delete(const char *id)
     set_edit_delete = true;
     req.set_edit = true;
 }
+static void on_clock_zero(void) { req.poll_now = true; }
 static void on_menu_home(void) { req.home = true; ui_load(scr_home); }
 static void on_resign(void) { req.resign = true; }
 
@@ -487,7 +490,7 @@ static void net_task(void *arg)
             }
             if (req.chal_send) {
                 req.chal_send = false;
-                r = eg_api_challenge_player(token, req.opp_id, req.first);
+                r = eg_api_challenge_player(token, req.opp_id, req.first, chal_tc);
                 char msg[160];
                 lvgl_port_lock(0);
                 if (r == EG_OK) {
@@ -589,12 +592,18 @@ static void net_task(void *arg)
             }
             if (r == EG_UNAUTHORIZED) { unauthorized = true; break; }
 
+            if (req.poll_now) { req.poll_now = false; next_poll = now; }   /* a clock ran out: let the server settle it */
+
             /* periodic refresh for whatever is on screen */
             if ((int32_t)(now - next_poll) >= 0) {
                 if (view == V_GAME && have_game) {
                     r = eg_api_game_id(token, cur.id, &scratch);
                     if (r == EG_OK && (scratch.move_count != cur.move_count || strcmp(scratch.status, cur.status) != 0)) apply_game(&scratch);
-                    next_poll = now + pdMS_TO_TICKS(cur.your_turn || !cur.in_progress ? 15000 : 5000);
+                    else if (r == EG_OK && scratch.timed) {        /* same position: just correct the clocks */
+                        cur.you_ms = scratch.you_ms; cur.opp_ms = scratch.opp_ms; cur.running = scratch.running;
+                        lvgl_port_lock(0); eg_game_clock(scr_game, &scratch); lvgl_port_unlock();
+                    }
+                    next_poll = now + pdMS_TO_TICKS(cur.timed && cur.in_progress ? 5000 : cur.your_turn || !cur.in_progress ? 15000 : 5000);
                 } else {
                     r = eg_api_home(token, &home);
                     lvgl_port_lock(0);
@@ -669,7 +678,7 @@ void app_main(void)
     eg_sets_set_edit(scr_sets, on_set_rename, on_set_delete);
     scr_rank = eg_rank_create(NULL);
     scr_you = eg_you_create(NULL, on_forget, eg_ota_version());
-    eg_game_cb_t cb = {.on_move = on_move, .on_resign = on_resign, .on_menu_home = on_menu_home};
+    eg_game_cb_t cb = {.on_move = on_move, .on_resign = on_resign, .on_menu_home = on_menu_home, .on_clock_zero = on_clock_zero};
     scr_game = eg_game_create(NULL, &cb);
     lvgl_port_unlock();
     xTaskCreate(scan_task, "scan", 10 * 1024, NULL, 4, &scan_task_h);

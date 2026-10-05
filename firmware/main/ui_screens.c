@@ -970,8 +970,8 @@ typedef struct {
     eg_find_cb_t cb;
     lv_obj_t *root, *ta, *list, *msg;
     kbd_t *k;
-    lv_obj_t *panel, *who, *first[3], *send, *status;   /* confirm panel */
-    int n, pick, f;
+    lv_obj_t *panel, *who, *first[3], *tcb[5], *send, *status;   /* confirm panel */
+    int n, pick, f, tc;
     bool sent;
     eg_user_t users[EG_USERS_MAX];
 } find_t;
@@ -1006,6 +1006,16 @@ static void find_first_cb(lv_event_t *e)
     seg_paint(f->first, 3, f->f);
 }
 
+static const char *TC_API[5] = {"", "3+2", "5+0", "10+0", "15+10"};
+static const char *TC_UI[5] = {"Untimed", "3+2", "5+0", "10+0", "15+10"};
+
+static void find_tc_cb(lv_event_t *e)
+{
+    find_t *f = lv_obj_get_user_data(lv_event_get_target(e));
+    f->tc = (int)(intptr_t)lv_event_get_user_data(e);
+    seg_paint(f->tcb, 5, f->tc);
+}
+
 static void find_pick_cb(lv_event_t *e)
 {
     find_t *f = lv_obj_get_user_data(lv_event_get_target(e));
@@ -1018,7 +1028,7 @@ static void find_send_cb(lv_event_t *e)
     if (f->pick < 0 || f->pick >= f->n) return;
     lv_obj_add_flag(f->send, LV_OBJ_FLAG_HIDDEN);              /* one tap, one challenge */
     lv_label_set_text(f->status, "Sending...");
-    if (f->cb.on_send) f->cb.on_send(f->users[f->pick].id, f->users[f->pick].name, FIRST_API[f->f]);
+    if (f->cb.on_send) f->cb.on_send(f->users[f->pick].id, f->users[f->pick].name, FIRST_API[f->f], TC_API[f->tc]);
 }
 
 /* Panel Back: before sending, back to the search; after sending, home. */
@@ -1084,21 +1094,29 @@ lv_obj_t *eg_find_create(lv_obj_t *parent, const eg_find_cb_t *cb)
     f->who = label(f->panel, &eg_sora_20_bold, EG_FG, "");
     lv_label_set_long_mode(f->who, LV_LABEL_LONG_DOT);
     lv_obj_set_width(f->who, 720);
-    lv_obj_set_pos(f->who, 40, 90);
-    lv_obj_set_pos(label(f->panel, &eg_sora_20_bold, EG_YELLOW, "Who goes first"), 40, 150);
+    lv_obj_set_pos(f->who, 40, 74);
+    lv_obj_set_pos(label(f->panel, &eg_sora_20_bold, EG_YELLOW, "Who goes first"), 40, 116);
     for (int i = 0; i < 3; i++) {
-        f->first[i] = seg_button(f->panel, FIRST_UI[i], 40 + i * 242, 182, 230);
+        f->first[i] = seg_button(f->panel, FIRST_UI[i], 40 + i * 242, 146, 230);
         lv_obj_set_user_data(f->first[i], f);
         lv_obj_add_event_cb(f->first[i], find_first_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
     f->f = 0;
     seg_paint(f->first, 3, f->f);
-    f->send = pill(f->panel, "Send challenge", EG_PINK, 40, 290, 300, 64);
+    lv_obj_set_pos(label(f->panel, &eg_sora_20_bold, EG_YELLOW, "Clock"), 40, 222);
+    for (int i = 0; i < 5; i++) {
+        f->tcb[i] = seg_button(f->panel, TC_UI[i], 40 + i * 146, 252, 134);
+        lv_obj_set_user_data(f->tcb[i], f);
+        lv_obj_add_event_cb(f->tcb[i], find_tc_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+    f->tc = 0;                                     /* untimed unless you pick a clock */
+    seg_paint(f->tcb, 5, f->tc);
+    f->send = pill(f->panel, "Send challenge", EG_PINK, 40, 340, 300, 64);
     lv_obj_add_event_cb(f->send, find_send_cb, LV_EVENT_CLICKED, f);
     f->status = label(f->panel, &eg_sora_16, EG_FG_HAZE, "");
     lv_label_set_long_mode(f->status, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(f->status, 720);
-    lv_obj_set_pos(f->status, 40, 376);
+    lv_obj_set_width(f->status, 400);
+    lv_obj_set_pos(f->status, 360, 352);
 
     eg_find_reset(s);
     return s;
@@ -1166,6 +1184,11 @@ void eg_find_set_status(lv_obj_t *screen, const char *msg, bool sent)
     if (sent) lv_obj_add_flag(f->send, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_remove_flag(f->send, LV_OBJ_FLAG_HIDDEN);
 }
+
+/* Edit (rename / delete) needs POST /board-set-edit on the server. Turn on once it's live. */
+#ifndef EG_SET_EDIT
+#define EG_SET_EDIT 0
+#endif
 
 /* ---------- Sets tab (pick Default or one of yours; making a new one opens the QR screen) ---------- */
 
@@ -1358,7 +1381,7 @@ static void set_tile(sets_t *t, const eg_set_t *st, const char *name, bool activ
     if (!k && !n) { lv_obj_t *w = label(tile, &eg_sora_16, EG_BG_VOID, "Loading..."); lv_obj_center(w); }
     lv_obj_t *l = label(b, &eg_sora_20_bold, EG_FG, name);
     lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
-    bool editable = strcmp(st->id, "default") != 0;
+    bool editable = EG_SET_EDIT && strcmp(st->id, "default") != 0;
     lv_obj_set_size(l, editable ? 136 : 210, 28);           /* one line, "..." when long */
     lv_obj_align(l, LV_ALIGN_LEFT_MID, 140, active ? -12 : 0);
     if (active) { lv_obj_t *a = label(b, &eg_sora_16, EG_PINK, "In use"); lv_obj_align(a, LV_ALIGN_LEFT_MID, 140, 16); }

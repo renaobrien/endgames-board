@@ -55,8 +55,6 @@ static void sample(eg_game_t *g)
     static const char *san[] = {"e4", "e5", "Nf3", "Nc6", "Bc4", "Nf6", "Ng5", "d5", "exd5", "Nxd5", "Nxf7"};
     g->moves_n = 11;
     for (int i = 0; i < 11; i++) strcpy(g->moves[i], san[i]);
-    g->clock_you_s = 8 * 60 + 41;   /* sample clocks: Endgames has no clocks yet, shown to preview the type */
-    g->clock_opp_s = 7 * 60 + 12;
 }
 
 int main(int argc, char **argv)
@@ -127,6 +125,11 @@ int main(int argc, char **argv)
         static eg_game_t g;
         sample(&g);
         g.opp_ai = true; strcpy(g.opp_difficulty, "intermediate"); strcpy(g.opponent, "Stockfish");
+        if (strncmp(which, "game-timed", 10) == 0) {
+            g.opp_ai = false; strcpy(g.opponent, "magnus_fan");
+            g.timed = true; strcpy(g.time_control, "5+0"); g.your_turn = true;
+            g.you_ms = strcmp(which, "game-timed-low") == 0 ? 18400 : 241500; g.opp_ms = 187000; g.running = 'y';
+        }
         eg_game_set(scr, &g);
     }
 
