@@ -2,7 +2,7 @@
 
 An open-source touchscreen chess board you can print and build at home. It plays your live games from [endgam.es](https://endgam.es) in full color, with your custom piece set on the board.
 
-> Status: early. The reference board is on order and the device API is built. The case, wiring and firmware land here as the first build comes together.
+> Status: early. The reference board is built and paired, and firmware runs on it with over-the-air updates. The case (v0 STLs) is not test-fit yet and has no battery bay. The build guide is a draft.
 
 ## How it works
 

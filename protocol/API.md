@@ -144,23 +144,24 @@ One call for the home screen.
       "updatedAt": "2026-10-04T19:30:00Z"
     }
   ],
+  "incomingChallenges": [ { "id": "uuid", "from": { "name": "queenbee", "elo": 1820 } } ],
   "activeSetId": "uuid-or-default",
   "sets": [ { "id": "uuid-or-default", "name": "Default", "kind": "default",
               "preview": { "wk": "https://.../wk.png", "wn": "https://.../wn.png" } } ]
 }
 ```
 
-`games` holds your in-progress games (against people and the computer), your-turn first, then most recently updated, up to 20. You can have at most 20 in progress; `board-new-game` returns `429` above that. `sets` lists the built-in set plus sets you made. `elo` is `null` and `ranked` false before the first ranked game.
+`games` holds your in-progress games (against people and the computer), your-turn first, then most recently updated, up to 20. You can have at most 20 in progress; `board-new-game` returns `429` above that. `incomingChallenges` lists direct challenges waiting for your answer (see `board-challenge-respond`). `sets` lists the built-in set plus sets you made. `elo` is `null` and `ranked` false before the first ranked game.
 
 ### Start a game: `POST /board-new-game`
 
 Against the computer:
 
 ```json
-{ "mode": "ai", "difficulty": "beginner", "color": "white" }
+{ "mode": "ai", "difficulty": "beginner", "first": "me" }
 ```
 
-`difficulty` is `beginner`, `intermediate`, `advanced` or `expert` (shown as Easy, Medium, Hard, Expert). `color` is `white`, `black` or `random`. Returns `200 { "apiVersion": 1, "game": { ... } }` in the `board-game` shape. If the computer plays white, its first move is already made.
+`difficulty` is `beginner`, `intermediate`, `advanced` or `expert` (shown as Easy, Medium, Hard, Expert). `first` is `me`, `computer` or `random` (who moves first). The older `color` field (`white`, `black`, `random`) is still accepted. Returns `200 { "apiVersion": 1, "game": { ... } }` in the `board-game` shape. If the computer plays white, its first move is already made.
 
 Challenge a friend:
 
@@ -175,6 +176,56 @@ Creates an open challenge with your active set. `color` is the color you play (`
 ```
 
 The board shows `url` as a QR. When someone accepts, the game appears in `board-home` and `board-game`.
+
+Challenge a specific player (find them with `board-users`):
+
+```json
+{ "mode": "challenge", "opponentId": "uuid", "first": "me" }
+```
+
+`first` is `me`, `computer` or `random`; here `computer` means the other player moves first. Returns:
+
+```json
+200 { "apiVersion": 1, "challenge": { "id": "uuid", "opponent": "queenbee", "expiresAt": "..." } }
+```
+
+`404` if the player does not exist or is the computer, `400` if you challenge yourself, `409` if you already have a pending challenge with that player. The other player sees it in their `board-home` `incomingChallenges` (and on the website's Play tab). Challenges expire after 48 hours.
+
+### Find a player: `GET /board-users?q=`
+
+Username search for "Challenge a player". `q` needs at least 2 characters (shorter returns an empty list).
+
+```json
+200 { "apiVersion": 1, "users": [ { "id": "uuid", "name": "queenbee", "elo": 1820 } ] }
+```
+
+At most 10, highest rating first. Excludes you and the computer.
+
+### Answer a challenge: `POST /board-challenge-respond`
+
+```json
+{ "id": "challenge-uuid", "accept": true }
+```
+
+Accept returns `200 { "apiVersion": 1, "game": { ... } }` in the `board-game` shape. Decline returns `200 { "apiVersion": 1, "declined": true }`. Only the challenged player can respond: anything else is `404`. `409` means the challenge already expired, was answered, or was withdrawn: refresh `board-home`.
+
+### Quick match: `POST` and `GET /board-quick-match`
+
+Pairs you with the next waiting player.
+
+```json
+POST { "action": "join" }    or    { "action": "cancel" }
+```
+
+Both `POST` and `GET` return the same shape:
+
+```json
+200 { "apiVersion": 1, "status": "waiting" }
+200 { "apiVersion": 1, "status": "matched", "game": { ... } }
+200 { "apiVersion": 1, "status": "idle" }
+```
+
+`join` pairs you with the oldest waiting player right away (`matched`), or queues you (`waiting`). Poll `GET` every 3 seconds while waiting. The first `GET` that returns `matched` delivers the `game` once and clears your queue row, so the next poll says `idle`. Queue entries last 5 minutes (then `idle`). Send `cancel` when the player backs out.
 
 ### Games against the computer
 
