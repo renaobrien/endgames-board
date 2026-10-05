@@ -19,6 +19,7 @@
 #define BOARD_Y 18
 #define PANEL_W 320          /* moves drawer width */
 #define RAIL_W 152
+#define BTN_W 112            /* Moves and Menu sit at the screen edge, well clear of the board */
 #define PAD 16
 
 typedef struct {
@@ -29,7 +30,7 @@ typedef struct {
     char pending_from[3], pending_to[3];
     /* Everything per-square is indexed by screen cell (row*8+col). */
     lv_obj_t *cells[64], *tint[64], *piece[64], *mark[64];
-    lv_obj_t *opp_name, *opp_sub, *opp_caps, *you_name, *you_caps, *status, *last;
+    lv_obj_t *avatar, *avatar_txt, *opp_card, *opp_name, *opp_sub, *opp_caps, *you_caps, *status, *last;
     lv_obj_t *btn_moves, *btn_menu;
     lv_obj_t *promo, *menu, *drawer, *drawer_list;
     bool sent;               /* our move is on its way; board already shows it */
@@ -275,10 +276,13 @@ static void set_status(ui_t *u)
 
 static void redraw_panel(ui_t *u)
 {
-    lv_label_set_text(u->opp_name, u->g.opponent[0] ? u->g.opponent : "Opponent");
+    /* Opponent: a round avatar with their initial (their picture once the API sends it). Tap it for the name. */
+    const char *nm = u->g.opponent[0] ? u->g.opponent : "Opponent";
+    char initial[2] = {(char)((nm[0] >= 'a' && nm[0] <= 'z') ? nm[0] - 32 : nm[0]), 0};
+    lv_label_set_text(u->avatar_txt, u->g.opp_ai ? "AI" : initial);
+    lv_label_set_text(u->opp_name, nm);
     if (u->g.opp_ai) lv_label_set_text(u->opp_sub, eg_difficulty_label(u->g.opp_difficulty[0] ? u->g.opp_difficulty : "intermediate"));
     else lv_label_set_text(u->opp_sub, "");
-    lv_label_set_text(u->you_name, "You");
 
     char you = u->g.you_white ? 'w' : 'b', opp = u->g.you_white ? 'b' : 'w';
     int lost_you[5], lost_opp[5];
@@ -530,6 +534,13 @@ static void moves_cb(lv_event_t *e)
     lv_anim_start(&a);
 }
 
+static void avatar_cb(lv_event_t *e)
+{
+    ui_t *u = U(lv_event_get_user_data(e));
+    if (lv_obj_has_flag(u->opp_card, LV_OBJ_FLAG_HIDDEN)) lv_obj_remove_flag(u->opp_card, LV_OBJ_FLAG_HIDDEN);
+    else lv_obj_add_flag(u->opp_card, LV_OBJ_FLAG_HIDDEN);
+}
+
 /* ---------- build ---------- */
 
 static lv_obj_t *mk_button(lv_obj_t *p, const char *txt, lv_color_t border, int x, int w)
@@ -632,14 +643,39 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
     plain(left);
     lv_obj_set_size(left, RAIL_W, 480);
     lv_obj_set_pos(left, 12, 0);
-    u->opp_name = mk_label(left, &eg_sora_20_bold, EG_FG, "");
+    u->avatar = lv_obj_create(left);
+    lv_obj_set_size(u->avatar, 64, 64);
+    lv_obj_set_pos(u->avatar, 0, 18);
+    lv_obj_set_style_radius(u->avatar, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(u->avatar, EG_SURFACE, 0);
+    lv_obj_set_style_border_width(u->avatar, 2, 0);
+    lv_obj_set_style_border_color(u->avatar, EG_PINK, 0);
+    lv_obj_set_style_pad_all(u->avatar, 0, 0);
+    lv_obj_clear_flag(u->avatar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(u->avatar, LV_OBJ_FLAG_CLICKABLE);
+    u->avatar_txt = mk_label(u->avatar, &eg_sora_20_bold, EG_FG, "");
+    lv_obj_center(u->avatar_txt);
+    lv_obj_add_event_cb(u->avatar, avatar_cb, LV_EVENT_CLICKED, scr);
+
+    /* name card: hidden until the avatar is tapped, closes on the next tap */
+    u->opp_card = lv_obj_create(scr);
+    lv_obj_set_size(u->opp_card, 300, 84);
+    lv_obj_set_pos(u->opp_card, 12, 90);
+    lv_obj_set_style_radius(u->opp_card, 14, 0);
+    lv_obj_set_style_bg_color(u->opp_card, EG_BG_VOID, 0);
+    lv_obj_set_style_border_width(u->opp_card, 2, 0);
+    lv_obj_set_style_border_color(u->opp_card, EG_PINK, 0);
+    lv_obj_set_style_pad_all(u->opp_card, 12, 0);
+    lv_obj_clear_flag(u->opp_card, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(u->opp_card, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_add_event_cb(u->opp_card, avatar_cb, LV_EVENT_CLICKED, scr);
+    u->opp_name = mk_label(u->opp_card, &eg_sora_20_bold, EG_FG, "");
     lv_label_set_long_mode(u->opp_name, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(u->opp_name, RAIL_W);
-    lv_obj_set_pos(u->opp_name, 0, 18);
-    u->opp_sub = mk_label(left, &eg_sora_16, EG_FG_HAZE, "");
-    lv_label_set_long_mode(u->opp_sub, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(u->opp_sub, RAIL_W);
-    lv_obj_set_pos(u->opp_sub, 0, 46);
+    lv_obj_set_width(u->opp_name, 272);
+    lv_obj_align(u->opp_name, LV_ALIGN_TOP_LEFT, 0, 0);
+    u->opp_sub = mk_label(u->opp_card, &eg_sora_16, EG_FG_HAZE, "");
+    lv_obj_align(u->opp_sub, LV_ALIGN_BOTTOM_LEFT, 0, 0);
+
     u->opp_caps = lv_obj_create(left);
     plain(u->opp_caps);
     lv_obj_set_size(u->opp_caps, RAIL_W, 30);
@@ -647,15 +683,13 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
 
     u->status = mk_label(left, &eg_sora_20_bold, EG_FG_HAZE, "");
     lv_label_set_long_mode(u->status, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(u->status, RAIL_W);
+    lv_obj_set_width(u->status, RAIL_W - 12);
     lv_obj_set_pos(u->status, 0, 200);
     u->last = mk_label(left, &eg_sora_16, EG_YELLOW, "");
     lv_label_set_long_mode(u->last, LV_LABEL_LONG_WRAP);
-    lv_obj_set_width(u->last, RAIL_W);
+    lv_obj_set_width(u->last, RAIL_W - 12);
     lv_obj_set_pos(u->last, 0, 234);
 
-    u->you_name = mk_label(left, &eg_sora_20_bold, EG_FG, "");
-    lv_obj_set_pos(u->you_name, 0, 352);
     u->you_caps = lv_obj_create(left);
     plain(u->you_caps);
     lv_obj_set_size(u->you_caps, RAIL_W, 30);
@@ -666,9 +700,9 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
     plain(right);
     lv_obj_set_size(right, RAIL_W, 480);
     lv_obj_set_pos(right, 800 - 12 - RAIL_W, 0);
-    u->btn_moves = mk_button(right, "Moves", EG_CYAN, 0, RAIL_W);
+    u->btn_moves = mk_button(right, "Moves", EG_CYAN, RAIL_W - BTN_W, BTN_W);
     lv_obj_set_y(u->btn_moves, 18);
-    u->btn_menu = mk_button(right, "Menu", EG_YELLOW, 0, RAIL_W);
+    u->btn_menu = mk_button(right, "Menu", EG_YELLOW, RAIL_W - BTN_W, BTN_W);
     lv_obj_set_y(u->btn_menu, 406);
     lv_obj_add_event_cb(u->btn_moves, moves_cb, LV_EVENT_CLICKED, scr);
     lv_obj_add_event_cb(u->btn_menu, menu_cb, LV_EVENT_CLICKED, scr);

@@ -4,6 +4,10 @@ Runs on the Elecrow CrowPanel Advanced 5" ESP32-P4 (800x480, GT911 touch). ESP-I
 
 **Status:** compiles for the ESP32-P4 with ESP-IDF v5.5.1 (verified 2026-10-04). `main/bsp.c` brings up the screen, touch, backlight and Wi-Fi using the pins and timings from Elecrow's published sources for this board. Runs on the real board; over-the-air releases 0.8.0 to 0.10.1 have shipped and one board is paired.
 
+## Known issue: Wi-Fi chip startup on early P4 boards
+
+Boards with ESP32-P4 silicon v1.x (the boot log says `chip revision: v1.3`) can crash in a loop while ESP-Hosted starts the C6 Wi-Fi chip, before `app_main` (`assert failed: vApplicationGetIdleTaskMemory` or `esp_startup_start_app`). It hit the reference board on 2026-10-05 with firmware that had worked the day before. Fixed in 0.11.4 (0.11.5 for the full fix) by keeping ESP-Hosted's transport buffers in PSRAM (`CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM`) and running the SDIO link at 20 MHz. PSRAM stays at 200 MHz: at 80 MHz the RGB panel cannot read its frame buffer fast enough and the picture drifts sideways. Background: Elecrow CrowPanel 5" P4 issue #3, esp-hosted #657, esp-hosted-mcu #167. The C6 still runs its factory ESP-Hosted firmware, which is older than the host side; updating it over SDIO is the longer-term fix.
+
 ## Layout
 
 | Path | What |

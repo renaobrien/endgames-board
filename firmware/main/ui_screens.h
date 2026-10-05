@@ -48,6 +48,7 @@ void eg_ai_setup_set_status(lv_obj_t *screen, const char *msg);
 /* Challenge a friend: QR of the challenge link. */
 lv_obj_t *eg_challenge_create(lv_obj_t *parent, void (*on_back)(void));
 void eg_challenge_set(lv_obj_t *screen, const char *url, const char *status);   /* url NULL hides the QR */
+void eg_challenge_set_find(lv_obj_t *screen, void (*on_find)(void));          /* "Challenge a player" button */
 
 /* Quick match: "Looking for an opponent..." with Cancel. searching false shows Try again and turns Cancel into Back. */
 lv_obj_t *eg_qm_create(lv_obj_t *parent, void (*on_cancel)(void), void (*on_retry)(void));

@@ -851,9 +851,16 @@ void eg_ai_setup_set_status(lv_obj_t *screen, const char *msg)
 
 /* ---------- challenge a friend ---------- */
 
-typedef struct { void (*back)(void); lv_obj_t *tile, *qr, *status; } chal_t;
+typedef struct { void (*back)(void); void (*find)(void); lv_obj_t *tile, *qr, *status; } chal_t;
 
 static void chal_back_cb(lv_event_t *e) { chal_t *c = lv_event_get_user_data(e); if (c->back) c->back(); }
+static void chal_find_cb(lv_event_t *e) { chal_t *c = lv_event_get_user_data(e); if (c->find) c->find(); }
+
+void eg_challenge_set_find(lv_obj_t *screen, void (*on_find)(void))
+{
+    chal_t *c = lv_obj_get_user_data(screen);
+    c->find = on_find;
+}
 
 lv_obj_t *eg_challenge_create(lv_obj_t *parent, void (*on_back)(void))
 {
@@ -888,6 +895,12 @@ lv_obj_t *eg_challenge_create(lv_obj_t *parent, void (*on_back)(void))
     lv_label_set_long_mode(c->status, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(c->status, 360);
     lv_obj_set_pos(c->status, 400, 250);
+
+    /* the QR only works for someone in the room */
+    lv_obj_set_pos(label(s, &eg_sora_16, EG_FG_HAZE, "Not in the room with you?"), 400, 306);
+    lv_obj_t *fb = pill(s, "Challenge a player", EG_YELLOW, 400, 334, 300, 56);
+    lv_obj_set_style_text_color(lv_obj_get_child(fb, 0), EG_BG_VOID, 0);
+    lv_obj_add_event_cb(fb, chal_find_cb, LV_EVENT_CLICKED, c);
     return s;
 }
 
@@ -1342,7 +1355,7 @@ lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *v
     lv_obj_add_event_cb(fb, you_forget_cb, LV_EVENT_CLICKED, y);
 
     lv_obj_t *v = label(s, &eg_sora_16, EG_FG_MIST, "");
-    lv_label_set_text_fmt(v, "Endgames board  ·  firmware %s\nUpdates install on their own between games.", version);
+    lv_label_set_text_fmt(v, "Firmware %s (auto update)", version);
     lv_obj_set_pos(v, 40, 330);
     add_nav(s, 4);
     return s;

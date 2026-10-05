@@ -4,6 +4,7 @@
 #include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "lvgl.h"
+#include "esp_lvgl_port.h"
 #include "pieces.h"
 #include <string.h>
 
@@ -32,14 +33,20 @@ const void *eg_piece_src(char color, char type)
 
 /* PNG -> ARGB8888 (LVGL byte order B,G,R,A) resized to EG_PIECE_PX with an alpha-weighted box filter.
  * Decoding once here keeps every board redraw a plain copy. Returns PSRAM memory or NULL. */
-static uint8_t *decode_scaled(const void *png, size_t len)
+static uint8_t *decode_scaled_locked(const void *png, size_t len)
 {
     unsigned char *rgba = NULL;
     unsigned w = 0, h = 0;
-    if (lodepng_decode32(&rgba, &w, &h, png, len) != 0 || !rgba || !w || !h) { free(rgba); return NULL; }
+    /* lodepng allocates through LVGL (lv_malloc), so its buffer goes back with lv_free, never free() */
+    unsigned err = lodepng_decode32(&rgba, &w, &h, png, len);
+    if (err || !rgba || !w || !h) {
+        ESP_LOGW(TAG, "png decode: %s", err ? lodepng_error_text(err) : "empty image");
+        lv_free(rgba);
+        return NULL;
+    }
     const int N = EG_PIECE_PX;
     uint8_t *out = heap_caps_malloc(N * N * 4, MALLOC_CAP_SPIRAM);
-    if (!out) { free(rgba); return NULL; }
+    if (!out) { lv_free(rgba); return NULL; }
     for (int y = 0; y < N; y++) {
         unsigned y0 = y * h / N, y1 = (y + 1) * h / N; if (y1 <= y0) y1 = y0 + 1;
         for (int x = 0; x < N; x++) {
@@ -55,7 +62,18 @@ static uint8_t *decode_scaled(const void *png, size_t len)
             o[3] = n ? a / n : 0;
         }
     }
-    free(rgba);
+    lv_free(rgba);
+    return out;
+}
+
+/* PNG -> ARGB8888 (LVGL byte order B,G,R,A) resized to EG_PIECE_PX with an alpha-weighted box filter.
+ * Runs on the network task: LVGL's allocator isn't thread-safe, so hold the LVGL lock while lodepng uses it.
+ * Returns PSRAM memory or NULL. */
+static uint8_t *decode_scaled(const void *png, size_t len)
+{
+    lvgl_port_lock(0);
+    uint8_t *out = decode_scaled_locked(png, len);
+    lvgl_port_unlock();
     return out;
 }
 
@@ -69,10 +87,16 @@ bool eg_pieces_load(const char *token, bool *changed)
 
     void *fresh[12] = {0};
     for (int i = 0; i < 12; i++) {
-        size_t len = 0;
-        void *png = eg_http_download(urls[i], &len);
-        fresh[i] = png ? decode_scaled(png, len) : NULL;
-        heap_caps_free(png);
+        for (int attempt = 0; attempt < 3 && !fresh[i]; attempt++) {
+            size_t len = 0;
+            void *png = eg_http_download(urls[i], &len);
+            fresh[i] = png ? decode_scaled(png, len) : NULL;
+            if (!fresh[i]) ESP_LOGW(TAG, "piece %d attempt %d: %s (%u bytes), internal free %u, largest %u", i, attempt + 1,
+                                    png ? "decode failed" : "download failed", (unsigned)len,
+                                    (unsigned)heap_caps_get_free_size(MALLOC_CAP_INTERNAL),
+                                    (unsigned)heap_caps_get_largest_free_block(MALLOC_CAP_INTERNAL));
+            heap_caps_free(png);
+        }
         if (!fresh[i]) {
             ESP_LOGW(TAG, "piece %d failed", i);
             for (int j = 0; j < i; j++) heap_caps_free(fresh[j]);

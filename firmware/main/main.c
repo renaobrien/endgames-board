@@ -4,6 +4,7 @@
  * task is wrapped in lvgl_port_lock / unlock. */
 #include "api.h"
 #include "bsp.h"
+#include "esp_heap_caps.h"
 #include "esp_log.h"
 #include "esp_lvgl_port.h"
 #include "freertos/FreeRTOS.h"
@@ -533,7 +534,12 @@ static void net_task(void *arg)
             if (req.resign && view == V_GAME && have_game) {
                 req.resign = false;
                 r = eg_api_resign(token, cur.id, &scratch);
-                if (r == EG_OK) apply_game(&scratch);
+                if (r == EG_OK) {                         /* resigned: back to the home screen */
+                    have_game = false;
+                    view = V_HOME;
+                    next_poll = 0;
+                    show_main(scr_home);
+                }
             }
             if (mailbox.pending && view == V_GAME && have_game) {
                 mailbox.pending = false;
@@ -594,6 +600,17 @@ void app_main(void)
 
     if (!eg_bsp_init()) { ESP_LOGE(TAG, "display init failed"); return; }
 
+    /* LVGL's 256 KB pool is too small for every screen plus piece decoding: give it 8 MB of PSRAM. */
+    {
+        const size_t extra = 8 * 1024 * 1024;
+        void *pool = heap_caps_malloc(extra, MALLOC_CAP_SPIRAM);
+        lvgl_port_lock(0);
+        if (!pool) ESP_LOGW(TAG, "no PSRAM for the LVGL pool");
+        else if (!lv_mem_add_pool(pool, extra)) { ESP_LOGE(TAG, "LVGL refused the extra pool"); heap_caps_free(pool); }
+        else ESP_LOGI(TAG, "LVGL pool +%u KB", (unsigned)(extra / 1024));
+        lvgl_port_unlock();
+    }
+
     lvgl_port_lock(0);
     scr_wifi = eg_wifi_create(NULL, on_wifi_connect, request_scan, on_wifi_back);
     eg_screens_set_wifi_handler(on_menu_wifi);
@@ -607,6 +624,7 @@ void app_main(void)
     scr_qm = eg_qm_create(NULL, on_qm_cancel, on_qm_retry);
     eg_find_cb_t fcb = {.on_query = on_find_query, .on_send = on_find_send, .on_link = on_home_challenge, .on_back = on_sub_back};
     scr_find = eg_find_create(NULL, &fcb);
+    eg_challenge_set_find(scr_chal, on_home_find);
     scr_sets = eg_sets_create(NULL, on_pick_set);
     scr_make = eg_make_create(NULL);
     scr_rank = eg_rank_create(NULL);

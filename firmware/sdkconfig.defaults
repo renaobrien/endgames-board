@@ -10,7 +10,8 @@ CONFIG_PARTITION_TABLE_CUSTOM_FILENAME="partitions.csv"
 # 32 MB PSRAM (frame buffers live here)
 CONFIG_SPIRAM=y
 CONFIG_SPIRAM_MODE_HEX=y
-# 200 MHz PSRAM is gated behind experimental features (Elecrow's factory config does the same)
+# 200 MHz PSRAM is gated behind experimental features (Elecrow's factory config does the same).
+# The RGB panel reads its frame buffer from PSRAM: at 80 MHz (0.11.3, 0.11.4) the picture drifted sideways.
 CONFIG_IDF_EXPERIMENTAL_FEATURES=y
 CONFIG_SPIRAM_SPEED_200M=y
 # RGB panel ISR stays in flash (Elecrow does the same). IRAM-safe mode rejects esp_lvgl_port's flash-resident vsync callback.
@@ -20,7 +21,7 @@ CONFIG_ESP_HOSTED_CP_TARGET_ESP32C6=y
 CONFIG_ESP_HOSTED_SDIO_HOST_INTERFACE=y
 CONFIG_ESP_HOSTED_SDIO_SLOT_1=y
 CONFIG_ESP_HOSTED_SDIO_4_BIT_BUS=y
-CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ=40000
+CONFIG_ESP_HOSTED_SDIO_CLOCK_FREQ_KHZ=20000
 CONFIG_ESP_HOSTED_SDIO_RESET_ACTIVE_HIGH=y
 CONFIG_ESP_HOSTED_SDIO_GPIO_RESET_SLAVE=20
 CONFIG_ESP_HOSTED_PRIV_SDIO_PIN_CMD_SLOT_1=54
@@ -39,7 +40,11 @@ CONFIG_LV_USE_LODEPNG=y
 CONFIG_LV_USE_SNAPSHOT=y
 CONFIG_LV_FONT_MONTSERRAT_14=y
 CONFIG_LV_FONT_MONTSERRAT_20=y
+# LVGL's own pool: 256 KB here, plus 8 MB of PSRAM added at boot (main.c). Switching LVGL to the system
+# malloc made 0.11.1 fail before app_main (main task couldn't be created), so the pool stays.
 CONFIG_LV_MEM_SIZE_KILOBYTES=256
+# LVGL's allocator only accepts extra pools up to this size; without it the 8 MB add fails and pieces can't be decoded
+CONFIG_LV_MEM_POOL_EXPAND_SIZE_KILOBYTES=8192
 CONFIG_FREERTOS_HZ=1000
 
 # ESP-IDF 5.5 bug on P4 (esp-idf #19020): a main stack under ~8 KB can land in TCM and crash on the first NVS write.
@@ -47,3 +52,5 @@ CONFIG_ESP_MAIN_TASK_STACK_SIZE=10240
 CONFIG_LV_USE_QRCODE=y
 # Over-the-air updates: roll back if a new version can't get back online
 CONFIG_BOOTLOADER_APP_ROLLBACK_ENABLE=y
+# ESP-Hosted on P4 rev v1.x (esp-hosted #657, esp-hosted-mcu #167): transport buffers in PSRAM, slower SDIO link
+CONFIG_ESP_HOSTED_MEMPOOL_PREFER_SPIRAM=y

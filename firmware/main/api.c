@@ -520,18 +520,52 @@ eg_result_t eg_api_challenge_respond(const char *token, const char *id, bool acc
     return r;
 }
 
+/* Image downloads (piece and set images on the storage host). One kept-alive connection, like the API:
+ * a fresh TLS handshake per image cost about a second each and, twelve in a row, left too little
+ * memory for the next one. On a transport error the client is rebuilt once. */
+static esp_http_client_handle_t s_dl;
+static body_t *s_dl_body;
+
+static esp_err_t on_event_dl(esp_http_client_event_t *e)
+{
+    e->user_data = s_dl_body;
+    return on_event(e);
+}
+
 void *eg_http_download(const char *url, size_t *len)
 {
     body_t b = {0};
-    esp_http_client_config_t cfg = {
-        .url = url, .event_handler = on_event, .user_data = &b,
-        .crt_bundle_attach = esp_crt_bundle_attach, .timeout_ms = 15000,
-    };
-    esp_http_client_handle_t c = esp_http_client_init(&cfg);
-    esp_err_t err = esp_http_client_perform(c);
-    int st = err == ESP_OK ? esp_http_client_get_status_code(c) : -1;
-    esp_http_client_cleanup(c);
-    if (st != 200) { heap_caps_free(b.buf); return NULL; }
+    int st = -1;
+    s_dl_body = &b;
+    for (int attempt = 0; attempt < 2 && st == -1; attempt++) {
+        if (!s_dl) {
+            esp_http_client_config_t cfg = {
+                .url = url, .event_handler = on_event_dl,
+                .crt_bundle_attach = esp_crt_bundle_attach, .timeout_ms = 15000,
+                .keep_alive_enable = true,
+            };
+            s_dl = esp_http_client_init(&cfg);
+            if (!s_dl) break;
+        }
+        esp_http_client_set_url(s_dl, url);
+        esp_http_client_set_method(s_dl, HTTP_METHOD_GET);
+        esp_err_t err = esp_http_client_perform(s_dl);
+        if (err == ESP_OK) {
+            st = esp_http_client_get_status_code(s_dl);
+        } else {
+            ESP_LOGW(TAG, "download failed: %s (attempt %d)", esp_err_to_name(err), attempt + 1);
+            heap_caps_free(b.buf);
+            b = (body_t){0};
+            esp_http_client_cleanup(s_dl);
+            s_dl = NULL;
+        }
+    }
+    s_dl_body = NULL;
+    if (st != 200 || !b.buf) {
+        if (st != -1) ESP_LOGW(TAG, "download HTTP %d: %.80s", st, url);
+        heap_caps_free(b.buf);
+        return NULL;
+    }
     *len = b.len;
     return b.buf;
 }
