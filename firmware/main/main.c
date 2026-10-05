@@ -118,7 +118,7 @@ static void on_menu_wifi(void)
  * the network task picks up within 250 ms. */
 
 static struct {
-    volatile bool home, ai, challenge, open, set, resign, rank, thumbs, sets;
+    volatile bool home, ai, challenge, open, set, resign, rank, thumbs, sets, set_edit;
     volatile bool qm_join, qm_cancel, search, chal_send, respond, respond_accept;
     char difficulty[16], color[8], game_id[40], set_id[48];
     char query[32], opp_id[40], opp_name[33], first[10], chal_id[40];
@@ -196,6 +196,21 @@ static void on_ai_start(const char *difficulty, const char *color)
     req.ai = true;
 }
 static void on_pick_set(const char *id) { snprintf(req.set_id, sizeof req.set_id, "%s", id); req.set = true; }
+static char set_edit_id[48], set_edit_name[40];
+static bool set_edit_delete;
+static void on_set_rename(const char *id, const char *name)
+{
+    snprintf(set_edit_id, sizeof set_edit_id, "%s", id);
+    snprintf(set_edit_name, sizeof set_edit_name, "%s", name);
+    set_edit_delete = false;
+    req.set_edit = true;
+}
+static void on_set_delete(const char *id)
+{
+    snprintf(set_edit_id, sizeof set_edit_id, "%s", id);
+    set_edit_delete = true;
+    req.set_edit = true;
+}
 static void on_menu_home(void) { req.home = true; ui_load(scr_home); }
 static void on_resign(void) { req.resign = true; }
 
@@ -525,6 +540,19 @@ static void net_task(void *arg)
                 eg_rank_set(scr_rank, &rank, r == EG_OK ? NULL : "Couldn't load the leaderboard.");
                 lvgl_port_unlock();
             }
+            if (req.set_edit) {
+                req.set_edit = false;
+                r = eg_api_set_edit(token, set_edit_id, set_edit_delete ? NULL : set_edit_name);
+                lvgl_port_lock(0);
+                eg_sets_edit_done(scr_sets, r == EG_OK,
+                                  r == EG_CONFLICT ? "That set is gone. It may have been deleted on the web."
+                                                   : "Couldn't save. Check Wi-Fi and try again.");
+                lvgl_port_unlock();
+                if (r == EG_OK) {
+                    req.sets = true;                                  /* fresh list */
+                    if (set_edit_delete) eg_pieces_load(token, &changed);   /* deleting the active set falls back to Default */
+                }
+            }
             if (req.sets) {                      /* Sets opened: fetch the list fresh (a set made on the phone shows up) */
                 req.sets = false;
                 if (eg_api_home(token, &home) == EG_OK) {
@@ -638,6 +666,7 @@ void app_main(void)
     eg_challenge_set_find(scr_chal, on_home_find);
     scr_sets = eg_sets_create(NULL, on_pick_set, on_make);
     scr_make = eg_make_create(NULL, on_make_back);
+    eg_sets_set_edit(scr_sets, on_set_rename, on_set_delete);
     scr_rank = eg_rank_create(NULL);
     scr_you = eg_you_create(NULL, on_forget, eg_ota_version());
     eg_game_cb_t cb = {.on_move = on_move, .on_resign = on_resign, .on_menu_home = on_menu_home};

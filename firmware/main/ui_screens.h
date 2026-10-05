@@ -72,6 +72,9 @@ void eg_screens_set_tab_handler(void (*on_tab)(int tab));
 
 lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *set_id), void (*on_make)(void));
 void eg_sets_set(lv_obj_t *screen, const eg_home_t *h);
+/* Rename / delete one of your sets (the Edit pill on each tile). Call eg_sets_edit_done with the result. */
+void eg_sets_set_edit(lv_obj_t *screen, void (*on_rename)(const char *id, const char *name), void (*on_delete)(const char *id));
+void eg_sets_edit_done(lv_obj_t *screen, bool ok, const char *msg);
 lv_obj_t *eg_make_create(lv_obj_t *parent, void (*on_back)(void));
 lv_obj_t *eg_rank_create(lv_obj_t *parent);
 void eg_rank_set(lv_obj_t *screen, const eg_rank_t *d, const char *error);   /* error non-NULL shows it instead */

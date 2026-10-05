@@ -1169,7 +1169,14 @@ void eg_find_set_status(lv_obj_t *screen, const char *msg, bool sent)
 
 /* ---------- Sets tab (pick Default or one of yours; making a new one opens the QR screen) ---------- */
 
-typedef struct { void (*pick)(const char *); void (*make)(void); lv_obj_t *list; char ids[EG_HOME_MAX_SETS][48]; } sets_t;
+typedef struct {
+    void (*pick)(const char *); void (*make)(void);
+    void (*rename)(const char *id, const char *name); void (*del)(const char *id);
+    lv_obj_t *list; char ids[EG_HOME_MAX_SETS][48];
+    /* edit panel */
+    lv_obj_t *panel, *ta, *status, *save, *del_btn; kbd_t *k;
+    int edit; uint32_t del_armed;
+} sets_t;
 
 static void sets_pick_cb(lv_event_t *e)
 {
@@ -1183,6 +1190,10 @@ static void sets_pick_cb(lv_event_t *e)
     if (t->pick) t->pick(t->ids[i]);
 }
 
+static void sets_edit_back_cb(lv_event_t *e);
+static void sets_save_cb(lv_event_t *e);
+static void sets_del_cb(lv_event_t *e);
+static void sets_enter(void *ctx, lv_obj_t *ta);
 static void sets_make_cb(lv_event_t *e) { sets_t *t = lv_event_get_user_data(e); if (t->make) t->make(); }
 
 static lv_obj_t *sets_heading(lv_obj_t *list, const char *text)
@@ -1214,7 +1225,110 @@ lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *), void (
     lv_obj_set_style_pad_all(t->list, 0, 0);
     lv_obj_set_style_pad_gap(t->list, 12, 0);
     add_nav(s, 1);
+
+    /* Edit panel: rename or delete one of your sets. Covers the screen, nav included. */
+    t->edit = -1;
+    t->panel = base(s);
+    lv_obj_add_flag(t->panel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_set_pos(label(t->panel, &eg_bungee_28, EG_YELLOW, "EDIT SET"), 40, 16);
+    lv_obj_add_event_cb(pill(t->panel, "Back", EG_SURFACE, 640, 16, 120, 44), sets_edit_back_cb, LV_EVENT_CLICKED, t);
+    t->ta = lv_textarea_create(t->panel);
+    lv_textarea_set_one_line(t->ta, true);
+    lv_textarea_set_max_length(t->ta, 32);
+    lv_textarea_set_placeholder_text(t->ta, "Set name");
+    lv_obj_set_size(t->ta, 440, 52);
+    lv_obj_set_pos(t->ta, 40, 70);
+    lv_obj_set_style_bg_color(t->ta, lv_color_hex(0x3A1A85), 0);
+    lv_obj_set_style_text_color(t->ta, EG_FG, 0);
+    lv_obj_set_style_text_font(t->ta, &eg_sora_20, 0);
+    lv_obj_set_style_border_color(t->ta, EG_PINK, 0);
+    lv_obj_set_style_border_width(t->ta, 4, 0);
+    lv_obj_set_style_bg_color(t->ta, EG_PINK, LV_PART_CURSOR | LV_STATE_FOCUSED);
+    lv_obj_add_state(t->ta, LV_STATE_FOCUSED);
+    t->save = pill(t->panel, "Save name", EG_PINK, 500, 70, 260, 52);
+    lv_obj_add_event_cb(t->save, sets_save_cb, LV_EVENT_CLICKED, t);
+    t->del_btn = pill(t->panel, "Delete set", EG_SURFACE, 40, 140, 260, 52);
+    lv_obj_set_style_text_color(lv_obj_get_child(t->del_btn, 0), EG_PINK_SOFT, 0);
+    lv_obj_add_event_cb(t->del_btn, sets_del_cb, LV_EVENT_CLICKED, t);
+    t->status = label(t->panel, &eg_sora_16, EG_FG_HAZE, "");
+    lv_obj_set_width(t->status, 440);
+    lv_label_set_long_mode(t->status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_pos(t->status, 320, 156);
+    t->k = kbd_create(t->panel, sets_enter, t);
+    lv_keyboard_set_textarea(t->k->kb, t->ta);
     return s;
+}
+
+static void sets_edit_status(sets_t *t, const char *msg) { lv_label_set_text(t->status, msg ? msg : ""); }
+
+static void sets_edit_close(sets_t *t)
+{
+    lv_obj_add_flag(t->panel, LV_OBJ_FLAG_HIDDEN);
+    t->edit = -1;
+}
+
+static void sets_edit_open_cb(lv_event_t *e)
+{
+    sets_t *t = lv_obj_get_user_data(lv_event_get_current_target(e));
+    intptr_t i = (intptr_t)lv_event_get_user_data(e);
+    lv_obj_t *tile = lv_obj_get_parent(lv_event_get_current_target(e));
+    t->edit = (int)i;
+    t->del_armed = 0;
+    lv_textarea_set_text(t->ta, lv_label_get_text(lv_obj_get_child(tile, 1)));
+    lv_label_set_text(lv_obj_get_child(t->del_btn, 0), "Delete set");
+    lv_obj_remove_state(t->save, LV_STATE_DISABLED);
+    lv_obj_remove_state(t->del_btn, LV_STATE_DISABLED);
+    sets_edit_status(t, NULL);
+    lv_obj_remove_flag(t->panel, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(t->panel);
+}
+
+static void sets_edit_back_cb(lv_event_t *e) { sets_edit_close(lv_event_get_user_data(e)); }
+
+static void sets_do_rename(sets_t *t)
+{
+    if (t->edit < 0) return;
+    const char *name = lv_textarea_get_text(t->ta);
+    while (*name == ' ') name++;
+    if (!*name) { sets_edit_status(t, "Give it a name first."); return; }
+    lv_obj_add_state(t->save, LV_STATE_DISABLED);
+    sets_edit_status(t, "Saving...");
+    if (t->rename) t->rename(t->ids[t->edit], name);
+}
+static void sets_save_cb(lv_event_t *e) { sets_do_rename(lv_event_get_user_data(e)); }
+static void sets_enter(void *ctx, lv_obj_t *ta) { (void)ta; sets_do_rename(ctx); }
+
+static void sets_del_cb(lv_event_t *e)
+{
+    sets_t *t = lv_event_get_user_data(e);
+    if (t->edit < 0) return;
+    uint32_t now = lv_tick_get();
+    if (!t->del_armed || now - t->del_armed > 3000) {
+        t->del_armed = now;
+        lv_label_set_text(lv_obj_get_child(t->del_btn, 0), "Tap again to delete");
+        return;
+    }
+    t->del_armed = 0;
+    lv_obj_add_state(t->del_btn, LV_STATE_DISABLED);
+    sets_edit_status(t, "Deleting...");
+    if (t->del) t->del(t->ids[t->edit]);
+}
+
+void eg_sets_set_edit(lv_obj_t *screen, void (*on_rename)(const char *, const char *), void (*on_delete)(const char *))
+{
+    sets_t *t = lv_obj_get_user_data(screen);
+    t->rename = on_rename;
+    t->del = on_delete;
+}
+
+void eg_sets_edit_done(lv_obj_t *screen, bool ok, const char *msg)
+{
+    sets_t *t = lv_obj_get_user_data(screen);
+    if (ok) { sets_edit_close(t); return; }
+    lv_obj_remove_state(t->save, LV_STATE_DISABLED);
+    lv_obj_remove_state(t->del_btn, LV_STATE_DISABLED);
+    lv_label_set_text(lv_obj_get_child(t->del_btn, 0), "Delete set");
+    sets_edit_status(t, msg);
 }
 
 static void set_tile(sets_t *t, const eg_set_t *st, const char *name, bool active, int i)
@@ -1244,9 +1358,17 @@ static void set_tile(sets_t *t, const eg_set_t *st, const char *name, bool activ
     if (!k && !n) { lv_obj_t *w = label(tile, &eg_sora_16, EG_BG_VOID, "Loading..."); lv_obj_center(w); }
     lv_obj_t *l = label(b, &eg_sora_20_bold, EG_FG, name);
     lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(l, 210);
+    bool editable = strcmp(st->id, "default") != 0;
+    lv_obj_set_size(l, editable ? 136 : 210, 28);           /* one line, "..." when long */
     lv_obj_align(l, LV_ALIGN_LEFT_MID, 140, active ? -12 : 0);
-    if (active) { lv_obj_t *a = label(b, &eg_sora_16, EG_PINK, "Playing with this"); lv_obj_align(a, LV_ALIGN_LEFT_MID, 140, 16); }
+    if (active) { lv_obj_t *a = label(b, &eg_sora_16, EG_PINK, "In use"); lv_obj_align(a, LV_ALIGN_LEFT_MID, 140, 16); }
+    if (editable) {
+        lv_obj_t *ed = pill(b, "Edit", EG_BG_VOID, 0, 0, 64, 40);
+        lv_obj_align(ed, LV_ALIGN_RIGHT_MID, 0, 0);
+        lv_obj_set_style_text_font(lv_obj_get_child(ed, 0), &eg_sora_16, 0);
+        lv_obj_set_user_data(ed, t);
+        lv_obj_add_event_cb(ed, sets_edit_open_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
     lv_obj_add_event_cb(b, sets_pick_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
 }
 

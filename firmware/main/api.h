@@ -71,6 +71,9 @@ eg_result_t eg_api_new_challenge(const char *token, const char *color, char url[
 eg_result_t eg_api_resign(const char *token, const char *game_id, eg_game_t *out);
 /* POST /board-set */
 eg_result_t eg_api_set(const char *token, const char *set_id);
+/* POST /board-set-edit. name != NULL renames the set; name == NULL deletes it (hidden, restorable on the web).
+ * EG_CONFLICT: the set is gone or isn't yours. The default set can't be edited. */
+eg_result_t eg_api_set_edit(const char *token, const char *set_id, const char *name);
 
 /* ---------- people: quick match and direct challenges ---------- */
 

@@ -87,7 +87,15 @@ int main(int argc, char **argv)
             .sets = {{"default", "Default"}, {"s1", "Vaporwave Rena"}, {"s2", "Jon Bo"}}};
         for (int i = 0; i < 3; i++) { strcpy(h.sets[i].preview_k, "wk"); strcpy(h.sets[i].preview_n, "wn"); }
         if (strcmp(which, "sets-empty") == 0) { h.n_sets = 1; strcpy(h.active_set, "default"); }
-        if (strncmp(which, "sets", 4) == 0) eg_sets_set(eg_sets_create(lv_screen_active(), NULL, NULL), &h);
+        if (strncmp(which, "sets", 4) == 0) {
+            lv_obj_t *ss = eg_sets_create(lv_screen_active(), NULL, NULL);
+            eg_sets_set(ss, &h);
+            if (strcmp(which, "sets-edit") == 0) {
+                lv_obj_t *list = lv_obj_get_child(ss, 3);      /* title, hint, make pill, list */
+                lv_obj_t *tile = lv_obj_get_child(list, 2);     /* Default, heading, first of yours */
+                lv_obj_send_event(lv_obj_get_child(tile, -1), LV_EVENT_CLICKED, NULL);
+            }
+        }
         else { eg_home_cb_t cb = {0}; eg_home_set(eg_home_create(lv_screen_active(), &cb), &h); }
     } else if (strcmp(which, "quick") == 0) {
         eg_qm_set(eg_qm_create(lv_screen_active(), NULL, NULL), "Looking for an opponent... 0:42", true);

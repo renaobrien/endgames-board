@@ -569,3 +569,20 @@ void *eg_http_download(const char *url, size_t *len)
     *len = b.len;
     return b.buf;
 }
+
+eg_result_t eg_api_set_edit(const char *token, const char *set_id, const char *name)
+{
+    if (!safe_id(set_id) || strcmp(set_id, "default") == 0) return EG_ERROR;
+    cJSON *j = cJSON_CreateObject();
+    cJSON_AddStringToObject(j, "setId", set_id);
+    cJSON_AddStringToObject(j, "action", name ? "rename" : "delete");
+    if (name) cJSON_AddStringToObject(j, "name", name);
+    char *req = cJSON_PrintUnformatted(j);
+    cJSON_Delete(j);
+    if (!req) return EG_ERROR;
+    char *body = NULL;
+    int st = request(HTTP_METHOD_POST, "board-set-edit", token, req, &body);
+    cJSON_free(req);
+    heap_caps_free(body);
+    return st == 200 ? EG_OK : st == 401 ? EG_UNAUTHORIZED : st == 404 ? EG_CONFLICT : EG_ERROR;
+}
