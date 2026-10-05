@@ -22,9 +22,7 @@ Your opponent can be on the web, the app, or another board. Games against the in
 | [`firmware/`](firmware/) | Code that runs on the board |
 | [`protocol/`](protocol/) | The device API the board uses to talk to endgam.es |
 
-## The reference build
 
-This repo documents one build: the one I made. Every section of the build guide says what I used, then what changes if you use something else. If you get it working on different parts, open a pull request and add your notes.
 
 ## Licenses
 
