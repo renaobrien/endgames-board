@@ -15,9 +15,10 @@
 
 #define SQ 56
 #define BOARD (8 * SQ)        /* 448: leaves room for the cyan frame and pink offset shadow, like the website */
-#define BOARD_X 18
+#define BOARD_X ((800 - BOARD) / 2)   /* board centered, thin rails either side */
 #define BOARD_Y 18
-#define PANEL_W 320
+#define PANEL_W 320          /* moves drawer width */
+#define RAIL_W 152
 #define PAD 16
 
 typedef struct {
@@ -120,18 +121,20 @@ static void redraw_board(ui_t *u)
         if (check && idx == king) {
             lv_obj_set_style_bg_color(t, EG_MAGENTA, 0);
             lv_obj_set_style_bg_opa(t, LV_OPA_60, 0);
-        } else if (idx == lf || idx == lt) {
-            lv_obj_set_style_bg_color(t, EG_PINK, 0);
-            lv_obj_set_style_bg_opa(t, dark ? EG_LASTMOVE_ALPHA_DARK : EG_LASTMOVE_ALPHA_LIGHT, 0);
+        } else if (idx == lf || idx == lt) {          /* last move: both squares clearly lit */
+            lv_obj_set_style_bg_color(t, EG_YELLOW, 0);
+            lv_obj_set_style_bg_opa(t, dark ? LV_OPA_50 : LV_OPA_60, 0);
         } else {
             lv_obj_set_style_bg_opa(t, LV_OPA_TRANSP, 0);
         }
         /* destination gets a yellow ring (website: --lastmove-ring) */
-        lv_obj_set_style_border_width(t, (idx == lt && !(check && idx == king)) ? 3 : 0, 0);
+        lv_obj_set_style_border_width(t, (idx == lt && !(check && idx == king)) ? 4 : 0, 0);
         lv_obj_set_style_border_color(t, EG_LASTMOVE_RING, 0);
 
         char c = u->g.board[idx];
-        const void *src = c ? eg_piece_src(isupper((unsigned char)c) ? 'w' : 'b', (char)tolower((unsigned char)c)) : NULL;
+        /* your pieces always use the light art, theirs the dark art, whatever color you actually play */
+        bool mine = c && (isupper((unsigned char)c) != 0) == u->g.you_white;
+        const void *src = c ? eg_piece_src(mine ? 'w' : 'b', (char)tolower((unsigned char)c)) : NULL;
         if (src) {
             lv_image_set_src(u->piece[cell], src);
             lv_obj_clear_flag(u->piece[cell], LV_OBJ_FLAG_HIDDEN);
@@ -140,6 +143,31 @@ static void redraw_board(ui_t *u)
         }
     }
     show_targets(u);
+}
+
+/* Slide the piece that just moved from its old square, so the opponent's move is easy to follow. */
+static void anim_tx(void *o, int32_t v) { lv_obj_set_style_translate_x(o, v, 0); }
+static void anim_ty(void *o, int32_t v) { lv_obj_set_style_translate_y(o, v, 0); }
+
+static void animate_last_move(ui_t *u)
+{
+    int f = eg_sq_index(u->g.last_from), t = eg_sq_index(u->g.last_to);
+    if (f < 0 || t < 0) return;
+    int cf = cell_of(u, f), ct = cell_of(u, t);
+    lv_obj_t *img = u->piece[ct];
+    int dx = (cf % 8 - ct % 8) * SQ, dy = (cf / 8 - ct / 8) * SQ;
+    lv_obj_move_foreground(u->cells[ct]);            /* draw above neighbouring squares while sliding */
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, img);
+    lv_anim_set_duration(&a, 380);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_set_exec_cb(&a, anim_tx);
+    lv_anim_set_values(&a, dx, 0);
+    lv_anim_start(&a);
+    lv_anim_set_exec_cb(&a, anim_ty);
+    lv_anim_set_values(&a, dy, 0);
+    lv_anim_start(&a);
 }
 
 /* ---------- panel ---------- */
@@ -171,25 +199,28 @@ static int missing(const eg_game_t *g, char color, int out[5])
 static void draw_caps(lv_obj_t *row, const int taken[5], char taken_color, int lead)
 {
     lv_obj_clean(row);
-    int x = 0;
+    int x = 0, y = 0, w = lv_obj_get_width(row);
     for (int k = 0; k < 5; k++) {
         for (int n = 0; n < taken[k]; n++) {
             const void *src = eg_piece_src(taken_color, CAP_ORDER[k]);
             if (!src) continue;
+            if (x > w - 22) { x = 0; y += 26; }      /* wrap onto a second line in the narrow rail */
             lv_obj_t *im = lv_image_create(row);
             lv_image_set_src(im, src);
             lv_image_set_pivot(im, 0, 0);
-            lv_image_set_scale(im, 256 * 26 / EG_PIECE_PX);
-            lv_obj_set_pos(im, x, 0);
-            x += 15;
+            lv_image_set_scale(im, 256 * 24 / EG_PIECE_PX);
+            lv_obj_set_pos(im, x, y);
+            x += 13;
         }
-        if (taken[k]) x += 6;
+        if (taken[k]) x += 5;
     }
     if (lead > 0) {
         lv_obj_t *l = mk_label(row, &eg_sora_16, EG_FG_HAZE, "");
         lv_label_set_text_fmt(l, "+%d", lead);
-        lv_obj_set_pos(l, x + 18, 4);
+        if (x > w - 40) { x = 0; y += 26; }
+        lv_obj_set_pos(l, x + 14, y + 4);
     }
+    lv_obj_set_height(row, y + 30);
 }
 
 static void rebuild_moves(ui_t *u)
@@ -245,16 +276,16 @@ static void set_status(ui_t *u)
 static void redraw_panel(ui_t *u)
 {
     lv_label_set_text(u->opp_name, u->g.opponent[0] ? u->g.opponent : "Opponent");
-    if (u->g.opp_ai) lv_label_set_text_fmt(u->opp_sub, "Computer  ·  %s", eg_difficulty_label(u->g.opp_difficulty[0] ? u->g.opp_difficulty : "intermediate"));
-    else lv_label_set_text(u->opp_sub, u->g.you_white ? "Playing black" : "Playing white");
+    if (u->g.opp_ai) lv_label_set_text(u->opp_sub, eg_difficulty_label(u->g.opp_difficulty[0] ? u->g.opp_difficulty : "intermediate"));
+    else lv_label_set_text(u->opp_sub, "");
     lv_label_set_text(u->you_name, "You");
 
     char you = u->g.you_white ? 'w' : 'b', opp = u->g.you_white ? 'b' : 'w';
     int lost_you[5], lost_opp[5];
     int v_you_lost = missing(&u->g, you, lost_you);
     int v_opp_lost = missing(&u->g, opp, lost_opp);
-    draw_caps(u->you_caps, lost_opp, opp, v_opp_lost - v_you_lost);   /* what you took */
-    draw_caps(u->opp_caps, lost_you, you, v_you_lost - v_opp_lost);   /* what they took */
+    draw_caps(u->you_caps, lost_opp, 'b', v_opp_lost - v_you_lost);   /* what you took: their (dark) pieces */
+    draw_caps(u->opp_caps, lost_you, 'w', v_you_lost - v_opp_lost);   /* what they took: your (light) pieces */
 
     set_status(u);
     if (u->g.moves_n) lv_label_set_text_fmt(u->last, "Last move  %s", u->g.moves[u->g.moves_n - 1]);
@@ -322,7 +353,7 @@ static void open_promotion(lv_obj_t *screen, ui_t *u)
     lv_obj_t *title = mk_label(u->promo, &eg_bungee_28, EG_YELLOW, "PROMOTE TO");
     lv_obj_align(title, LV_ALIGN_TOP_MID, 0, 80);
     static const char kinds[4] = {'q', 'r', 'b', 'n'};
-    char col = u->g.you_white ? 'w' : 'b';
+    char col = 'w';                           /* your pieces use the light art */
     for (int i = 0; i < 4; i++) {
         lv_obj_t *b = lv_obj_create(u->promo);
         lv_obj_set_size(b, 96, 96);
@@ -407,7 +438,7 @@ static void menu_cb(lv_event_t *e)
     plain(u->menu);
     int n = u->g.in_progress ? 3 : 2;
     lv_obj_set_size(u->menu, 288, 12 + n * 62);
-    lv_obj_align(u->menu, LV_ALIGN_BOTTOM_RIGHT, -PAD, -84);
+    lv_obj_align(u->menu, LV_ALIGN_BOTTOM_RIGHT, -12, -82);
     lv_obj_set_style_bg_color(u->menu, EG_SURFACE, 0);
     lv_obj_set_style_bg_opa(u->menu, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(u->menu, 3, 0);
@@ -447,7 +478,7 @@ static void drawer_close_cb(lv_event_t *e)
     lv_anim_init(&a);
     lv_anim_set_var(&a, u->drawer);
     lv_anim_set_exec_cb(&a, drawer_x);
-    lv_anim_set_values(&a, 480, 800);
+    lv_anim_set_values(&a, 800 - PANEL_W, 800);
     lv_anim_set_duration(&a, 180);
     lv_anim_set_user_data(&a, u);
     lv_anim_set_completed_cb(&a, drawer_close_done);
@@ -493,7 +524,7 @@ static void moves_cb(lv_event_t *e)
     lv_anim_init(&a);
     lv_anim_set_var(&a, u->drawer);
     lv_anim_set_exec_cb(&a, drawer_x);
-    lv_anim_set_values(&a, 800, 480);
+    lv_anim_set_values(&a, 800, 800 - PANEL_W);
     lv_anim_set_duration(&a, 200);
     lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
     lv_anim_start(&a);
@@ -596,62 +627,49 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
         }
     }
 
-    /* panel */
-    lv_obj_t *panel = lv_obj_create(scr);
-    plain(panel);
-    lv_obj_set_size(panel, PANEL_W, 480);
-    lv_obj_set_pos(panel, 480, 0);
-    lv_obj_set_style_bg_color(panel, EG_BG_NIGHT, 0);
-    lv_obj_set_style_bg_opa(panel, LV_OPA_COVER, 0);
-    lv_obj_t *edge = lv_obj_create(panel);          /* cyan edge, pink offset (the website's board frame) */
-    plain(edge);
-    lv_obj_set_size(edge, 2, 480);
-    lv_obj_set_style_bg_color(edge, EG_BOARD_EDGE, 0);
-    lv_obj_set_style_bg_opa(edge, LV_OPA_COVER, 0);
-    lv_obj_t *edge2 = lv_obj_create(panel);
-    plain(edge2);
-    lv_obj_set_size(edge2, 2, 480);
-    lv_obj_set_pos(edge2, 2, 0);
-    lv_obj_set_style_bg_color(edge2, EG_BOARD_SHADOW, 0);
-    lv_obj_set_style_bg_opa(edge2, LV_OPA_COVER, 0);
-
-    int cx = 4 + PAD + 4;                     /* content x inside the panel */
-    int cw = PANEL_W - cx - PAD;              /* content width */
-
-    /* opponent strip */
-    u->opp_name = mk_label(panel, &eg_sora_20_bold, EG_FG, "");
+    /* left rail: opponent at the top, status in the middle, you at the bottom */
+    lv_obj_t *left = lv_obj_create(scr);
+    plain(left);
+    lv_obj_set_size(left, RAIL_W, 480);
+    lv_obj_set_pos(left, 12, 0);
+    u->opp_name = mk_label(left, &eg_sora_20_bold, EG_FG, "");
     lv_label_set_long_mode(u->opp_name, LV_LABEL_LONG_DOT);
-    lv_obj_set_width(u->opp_name, cw);
-    lv_obj_set_pos(u->opp_name, cx, 22);
-    u->opp_sub = mk_label(panel, &eg_sora_16, EG_FG_HAZE, "");
-    lv_obj_set_pos(u->opp_sub, cx, 52);
-    u->opp_caps = lv_obj_create(panel);
+    lv_obj_set_width(u->opp_name, RAIL_W);
+    lv_obj_set_pos(u->opp_name, 0, 18);
+    u->opp_sub = mk_label(left, &eg_sora_16, EG_FG_HAZE, "");
+    lv_label_set_long_mode(u->opp_sub, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(u->opp_sub, RAIL_W);
+    lv_obj_set_pos(u->opp_sub, 0, 46);
+    u->opp_caps = lv_obj_create(left);
     plain(u->opp_caps);
-    lv_obj_set_size(u->opp_caps, cw, 30);
-    lv_obj_set_pos(u->opp_caps, cx, 82);
+    lv_obj_set_size(u->opp_caps, RAIL_W, 30);
+    lv_obj_set_pos(u->opp_caps, 0, 92);
 
-    /* status */
-    u->status = mk_label(panel, &eg_bungee_28, EG_FG_HAZE, "");
-    lv_obj_set_pos(u->status, cx, 170);
-    u->last = mk_label(panel, &eg_sora_16, EG_YELLOW, "");
-    lv_obj_set_pos(u->last, cx, 212);
+    u->status = mk_label(left, &eg_sora_20_bold, EG_FG_HAZE, "");
+    lv_label_set_long_mode(u->status, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(u->status, RAIL_W);
+    lv_obj_set_pos(u->status, 0, 200);
+    u->last = mk_label(left, &eg_sora_16, EG_YELLOW, "");
+    lv_label_set_long_mode(u->last, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(u->last, RAIL_W);
+    lv_obj_set_pos(u->last, 0, 234);
 
-    /* your strip */
-    u->you_name = mk_label(panel, &eg_sora_20_bold, EG_FG, "");
-    lv_obj_set_pos(u->you_name, cx, 292);
-    u->you_caps = lv_obj_create(panel);
+    u->you_name = mk_label(left, &eg_sora_20_bold, EG_FG, "");
+    lv_obj_set_pos(u->you_name, 0, 352);
+    u->you_caps = lv_obj_create(left);
     plain(u->you_caps);
-    lv_obj_set_size(u->you_caps, cw, 30);
-    lv_obj_set_pos(u->you_caps, cx, 324);
+    lv_obj_set_size(u->you_caps, RAIL_W, 30);
+    lv_obj_set_pos(u->you_caps, 0, 384);
 
-    /* buttons */
-    lv_obj_t *row = lv_obj_create(panel);
-    plain(row);
-    lv_obj_set_size(row, cw, 56);
-    lv_obj_set_pos(row, cx, 408);
-    int bw = (cw - 10) / 2;
-    u->btn_moves = mk_button(row, "Moves", EG_CYAN, 0, bw);
-    u->btn_menu = mk_button(row, "Menu", EG_YELLOW, bw + 10, bw);
+    /* right rail: Moves and Menu */
+    lv_obj_t *right = lv_obj_create(scr);
+    plain(right);
+    lv_obj_set_size(right, RAIL_W, 480);
+    lv_obj_set_pos(right, 800 - 12 - RAIL_W, 0);
+    u->btn_moves = mk_button(right, "Moves", EG_CYAN, 0, RAIL_W);
+    lv_obj_set_y(u->btn_moves, 18);
+    u->btn_menu = mk_button(right, "Menu", EG_YELLOW, 0, RAIL_W);
+    lv_obj_set_y(u->btn_menu, 406);
     lv_obj_add_event_cb(u->btn_moves, moves_cb, LV_EVENT_CLICKED, scr);
     lv_obj_add_event_cb(u->btn_menu, menu_cb, LV_EVENT_CLICKED, scr);
 
@@ -662,6 +680,9 @@ void eg_game_set(lv_obj_t *screen, const eg_game_t *g)
 {
     ui_t *u = U(screen);
     bool new_game = strcmp(u->g.id, g->id) != 0;
+    /* the opponent just moved if a new last move arrived and it's now our turn */
+    bool opp_moved = !new_game && g->your_turn && g->last_to[0] &&
+                     (strcmp(g->last_from, u->g.last_from) != 0 || strcmp(g->last_to, u->g.last_to) != 0 || g->move_count != u->g.move_count);
     u->g = *g;
     u->flipped = !g->you_white;              /* your side is always at the bottom */
     u->selected = -1;
@@ -670,4 +691,5 @@ void eg_game_set(lv_obj_t *screen, const eg_game_t *g)
     if (new_game) { close_overlay(&u->menu); close_overlay(&u->drawer); u->drawer_list = NULL; }
     redraw_board(u);
     redraw_panel(u);
+    if (opp_moved) animate_last_move(u);
 }

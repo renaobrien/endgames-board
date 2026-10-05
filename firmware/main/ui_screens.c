@@ -633,8 +633,8 @@ lv_obj_t *eg_home_create(lv_obj_t *parent, const eg_home_cb_t *cb)
     h->cb = *cb;
     lv_obj_set_user_data(s, h);
 
-    lv_obj_add_event_cb(big_button(s, "Play the computer", EG_PINK, lv_color_white(), 24, 24, 300, 178), home_play_cb, LV_EVENT_CLICKED, h);
-    lv_obj_add_event_cb(big_button(s, "Challenge a friend", EG_CYAN, EG_BG_VOID, 24, 216, 300, 178), home_chal_cb, LV_EVENT_CLICKED, h);
+    lv_obj_add_event_cb(big_button(s, "Play the computer", EG_PINK, lv_color_white(), 24, 24, 300, 370), home_play_cb, LV_EVENT_CLICKED, h);
+    (void)home_chal_cb;   /* Quick match and Challenge a player (username search) land once the server supports them */
 
     lv_obj_t *gt = label(s, &eg_sora_20_bold, EG_YELLOW, "Your games");
     lv_obj_set_pos(gt, 348, 24);
@@ -683,9 +683,7 @@ void eg_home_set(lv_obj_t *screen, const eg_home_t *d)
         lv_obj_set_width(n, 240);
         lv_obj_align(n, LV_ALIGN_TOP_LEFT, 0, 0);
         lv_obj_t *sub = label(row, &eg_sora_16, EG_FG_HAZE, "");
-        const char *col = g->your_color == 'b' ? "You're black" : "You're white";
-        if (g->opponent_ai) lv_label_set_text_fmt(sub, "%s  ·  %s", eg_difficulty_label(g->difficulty), col);
-        else lv_label_set_text(sub, col);
+        lv_label_set_text(sub, g->opponent_ai ? eg_difficulty_label(g->difficulty) : "");
         lv_obj_align(sub, LV_ALIGN_BOTTOM_LEFT, 0, 0);
         lv_obj_t *turn = label(row, &eg_sora_16, g->your_turn ? EG_PINK : EG_FG_MIST, g->your_turn ? "Your turn" : "Their turn");
         lv_obj_align(turn, LV_ALIGN_RIGHT_MID, 0, 0);
@@ -705,7 +703,7 @@ typedef struct {
 static const char *DIFF_API[4] = {"beginner", "intermediate", "advanced", "expert"};
 static const char *DIFF_UI[4] = {"Easy", "Medium", "Hard", "Expert"};
 static const char *COL_API[3] = {"white", "black", "random"};
-static const char *COL_UI[3] = {"White", "Black", "Random"};
+static const char *COL_UI[3] = {"Me", "Computer", "Random"};   /* who moves first; maps to white / black / random */
 
 static void seg_paint(lv_obj_t **btns, int n, int sel)
 {
@@ -765,7 +763,7 @@ lv_obj_t *eg_ai_setup_create(lv_obj_t *parent, void (*on_start)(const char *, co
         a->diff[i] = seg_button(s, DIFF_UI[i], 40 + i * 182, 128, 170);
         lv_obj_add_event_cb(a->diff[i], ai_diff_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
-    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "You play"), 40, 222);
+    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "Who goes first"), 40, 222);
     for (int i = 0; i < 3; i++) {
         a->col[i] = seg_button(s, COL_UI[i], 40 + i * 242, 254, 230);
         lv_obj_add_event_cb(a->col[i], ai_col_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
