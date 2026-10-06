@@ -26,13 +26,20 @@
 static const char *TAG = "eg";
 
 static char token[96];
-static lv_obj_t *scr_wifi, *scr_pair, *scr_home, *scr_ai, *scr_chal, *scr_qm, *scr_find, *scr_sets, *scr_make, *scr_rank, *scr_you, *scr_game;
+static lv_obj_t *scr_boot, *scr_wifi, *scr_pair, *scr_home, *scr_ai, *scr_chal, *scr_qm, *scr_find, *scr_sets, *scr_make, *scr_rank, *scr_you, *scr_game;
 static eg_rank_t rank;
 static eg_home_t home;                  /* last board-home result */
 static eg_game_t cur;
 static bool have_game;
 static volatile bool want_wifi_screen, want_wifi_back;
 
+
+static void boot_status(const char *msg)
+{
+    lvgl_port_lock(0);
+    if (scr_boot && lv_screen_active() == scr_boot) eg_boot_set_status(scr_boot, msg);
+    lvgl_port_unlock();
+}
 
 static void show(lv_obj_t *s)
 {
@@ -137,10 +144,16 @@ static void on_home_challenge(void)
 }
 /* Quick match. Cancel drops a pending join (rapid Quick match, Cancel taps) and goes home at once;
  * the network task cancels the queue entry, and opens the game if a match landed in between. */
+static char qm_tc[8] = "10+0";            /* the clock picked for quick match, "" untimed */
 static void on_home_quick(void)
 {
-    eg_qm_set(scr_qm, "Looking for an opponent...", true);
+    eg_qm_pick(scr_qm);
     ui_load(scr_qm);
+}
+static void on_qm_join(const char *tc)
+{
+    snprintf(qm_tc, sizeof qm_tc, "%s", tc ? tc : "");
+    eg_qm_set(scr_qm, "Looking for an opponent...", true);
     req.qm_join = true;
 }
 static void on_qm_cancel(void)
@@ -150,7 +163,7 @@ static void on_qm_cancel(void)
     behind = scr_home;
     ui_load(scr_home);
 }
-static void on_qm_retry(void) { on_home_quick(); }
+static void on_qm_retry(void) { on_qm_join(qm_tc); }
 
 /* Challenge a player */
 static void on_home_find(void) { eg_find_reset(scr_find); ui_load(scr_find); }
@@ -158,7 +171,7 @@ static void on_find_query(const char *q)
 {
     snprintf(req.query, sizeof req.query, "%s", q);
     req.search_at = xTaskGetTickCount() + pdMS_TO_TICKS(400);
-    req.search = strlen(req.query) >= 2;
+    req.search = strlen(req.query) >= 3;
 }
 static char chal_tc[8];
 static void on_find_send(const char *id, const char *name, const char *first, const char *time_control)
@@ -191,6 +204,7 @@ static void on_make(void) { ui_load(scr_make); }
 static void on_make_back(void) { req.sets = true; behind = scr_sets; ui_load(scr_sets); }   /* a new set may be ready */
 static void on_home_open(const char *id) { snprintf(req.game_id, sizeof req.game_id, "%s", id); req.open = true; }
 static void on_sub_back(void) { req.search = false; req.home = true; behind = scr_home; ui_load(scr_home); }
+static void on_chal_back(void) { ui_load(scr_find); }   /* Send a link was opened from Challenge a player */
 static void on_ai_start(const char *difficulty, const char *color)
 {
     snprintf(req.difficulty, sizeof req.difficulty, "%s", difficulty);
@@ -216,6 +230,193 @@ static void on_set_delete(const char *id)
 static void on_clock_zero(void) { req.poll_now = true; }
 static void on_menu_home(void) { req.home = true; ui_load(scr_home); }
 static void on_resign(void) { req.resign = true; }
+
+/* ---------- power and notifications (UI task) ----------
+ * Dim to 20% after 2 minutes untouched, backlight off after 10. The first touch on a dark screen only
+ * wakes it. Never dark while it's your move in a timed game. No speaker, so notifications are visual:
+ * a dot on Play, a banner at the top, and a dark screen lights up for 60 s. */
+
+#define DIM_MS (2 * 60 * 1000)
+#define OFF_MS (10 * 60 * 1000)
+#define NOTIFY_AWAKE_MS (60 * 1000)
+
+static volatile bool keep_awake;          /* set by the network task */
+static int bl_now = -1;
+static lv_obj_t *catcher, *banner;
+static bool notify_woke;
+static char banner_game[40];
+static bool banner_is_challenge;
+
+static void backlight(int pct)
+{
+    if (pct == bl_now) return;
+    bl_now = pct;
+    eg_bsp_backlight((uint8_t)pct);
+}
+
+static void catcher_cb(lv_event_t *e)
+{
+    lv_event_code_t c = lv_event_get_code(e);
+    if (c == LV_EVENT_PRESSED) { backlight(100); notify_woke = false; }
+    else if (c == LV_EVENT_CLICKED || c == LV_EVENT_PRESS_LOST) {
+        lv_obj_delete_async(catcher);
+        catcher = NULL;
+    }
+}
+
+static void go_dark(void)
+{
+    backlight(0);
+    notify_woke = false;
+    if (catcher) return;
+    catcher = lv_obj_create(lv_layer_top());           /* eats the waking touch */
+    lv_obj_remove_style_all(catcher);
+    lv_obj_set_size(catcher, 800, 480);
+    lv_obj_add_flag(catcher, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_add_event_cb(catcher, catcher_cb, LV_EVENT_ALL, NULL);
+}
+
+static void power_tick(lv_timer_t *t)
+{
+    (void)t;
+    uint32_t idle = lv_display_get_inactive_time(NULL);
+    if (catcher && bl_now == 0) {                       /* dark: stay dark until touched or notified */
+        if (keep_awake) { lv_obj_delete(catcher); catcher = NULL; backlight(100); }
+        return;
+    }
+    if (notify_woke) {
+        if (idle < 1000) notify_woke = false;           /* someone touched it: normal rules again */
+        else if (idle > NOTIFY_AWAKE_MS) { go_dark(); return; }
+        else { backlight(100); return; }
+    }
+    if (keep_awake || idle < DIM_MS) backlight(100);
+    else if (idle < OFF_MS) backlight(20);
+    else go_dark();
+}
+
+static void banner_close(void)
+{
+    if (banner) { lv_obj_delete(banner); banner = NULL; }
+}
+static void banner_x_cb(lv_event_t *e) { (void)e; banner_close(); }
+static void banner_open_cb(lv_event_t *e)
+{
+    (void)e;
+    if (banner_is_challenge || !banner_game[0]) { req.home = true; behind = scr_home; ui_load(scr_home); }
+    else { snprintf(req.game_id, sizeof req.game_id, "%s", banner_game); req.open = true; }
+    banner_close();
+}
+static void banner_timeout(lv_timer_t *t) { (void)t; banner_close(); }
+static void banner_y(void *o, int32_t v) { lv_obj_set_y(o, v); }
+
+/* Call with the LVGL lock held. */
+static void notify(const char *text, const char *game_id, bool challenge)
+{
+    banner_close();
+    snprintf(banner_game, sizeof banner_game, "%s", game_id ? game_id : "");
+    banner_is_challenge = challenge;
+    banner = lv_obj_create(lv_layer_top());
+    lv_obj_remove_flag(banner, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(banner, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(banner, 800, 64);
+    lv_obj_set_pos(banner, 0, -64);
+    lv_obj_set_style_bg_color(banner, EG_BG_VOID, 0);
+    lv_obj_set_style_radius(banner, 0, 0);
+    lv_obj_set_style_border_width(banner, 3, 0);
+    lv_obj_set_style_border_side(banner, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_color(banner, challenge ? EG_CYAN : EG_PINK, 0);
+    lv_obj_set_style_pad_all(banner, 0, 0);
+    lv_obj_t *dot = lv_obj_create(banner);
+    lv_obj_remove_style_all(dot);
+    lv_obj_set_size(dot, 14, 14);
+    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(dot, challenge ? EG_CYAN : EG_PINK, 0);
+    lv_obj_set_style_bg_opa(dot, LV_OPA_COVER, 0);
+    lv_obj_align(dot, LV_ALIGN_LEFT_MID, 24, 0);
+    lv_obj_t *l = lv_label_create(banner);
+    lv_obj_set_style_text_font(l, &eg_sora_20_bold, 0);
+    lv_obj_set_style_text_color(l, EG_FG, 0);
+    lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(l, 560);
+    lv_label_set_text(l, text);
+    lv_obj_align(l, LV_ALIGN_LEFT_MID, 52, 0);
+    lv_obj_t *hint = lv_label_create(banner);
+    lv_obj_set_style_text_font(hint, &eg_sora_16, 0);
+    lv_obj_set_style_text_color(hint, EG_FG_HAZE, 0);
+    lv_label_set_text(hint, "Tap to open");
+    lv_obj_align(hint, LV_ALIGN_RIGHT_MID, -84, 0);
+    lv_obj_t *x = lv_button_create(banner);
+    lv_obj_set_size(x, 56, 44);
+    lv_obj_align(x, LV_ALIGN_RIGHT_MID, -12, 0);
+    lv_obj_set_style_bg_color(x, EG_SURFACE, 0);
+    lv_obj_set_style_radius(x, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_shadow_width(x, 0, 0);
+    lv_obj_t *xl = lv_label_create(x);
+    lv_obj_set_style_text_font(xl, &lv_font_montserrat_20, 0);
+    lv_obj_set_style_text_color(xl, EG_FG, 0);
+    lv_label_set_text(xl, LV_SYMBOL_CLOSE);
+    lv_obj_center(xl);
+    lv_obj_add_event_cb(x, banner_x_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(banner, banner_open_cb, LV_EVENT_CLICKED, NULL);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, banner);
+    lv_anim_set_exec_cb(&a, banner_y);
+    lv_anim_set_values(&a, -64, 0);
+    lv_anim_set_duration(&a, 260);
+    lv_anim_set_path_cb(&a, lv_anim_path_ease_out);
+    lv_anim_start(&a);
+    lv_timer_t *t = lv_timer_create(banner_timeout, NOTIFY_AWAKE_MS, NULL);
+    lv_timer_set_repeat_count(t, 1);
+    if (catcher) { lv_obj_delete(catcher); catcher = NULL; }   /* a dark screen lights up */
+    if (bl_now != 100) { backlight(100); notify_woke = true; }
+}
+
+/* What's waiting for you (games against people where it's your move, and challenges), compared
+ * with the last home refresh. Network task. */
+static char seen[EG_HOME_MAX_GAMES + EG_HOME_MAX_INCOMING][40];
+static int seen_n = -1;                    /* -1: first refresh after boot, nothing is "new" */
+
+static void check_waiting(const eg_home_t *h)
+{
+    char now_ids[EG_HOME_MAX_GAMES + EG_HOME_MAX_INCOMING][40];
+    int n = 0;
+    const char *new_text = NULL, *new_game = NULL;
+    bool new_chal = false;
+    static char text[96];
+    int new_count = 0;
+    for (int i = 0; i < h->n_incoming; i++) snprintf(now_ids[n++], 40, "%s", h->incoming[i].id);
+    for (int i = 0; i < h->n_games; i++)
+        if (h->games[i].your_turn && !h->games[i].opponent_ai) snprintf(now_ids[n++], 40, "%s", h->games[i].id);
+    if (seen_n >= 0) {
+        for (int i = 0; i < n; i++) {
+            bool was = false;
+            for (int k = 0; k < seen_n; k++) if (strcmp(seen[k], now_ids[i]) == 0) was = true;
+            if (was) continue;
+            new_count++;
+            if (new_text) continue;
+            if (i < h->n_incoming) {
+                const eg_incoming_t *c = &h->incoming[i];
+                snprintf(text, sizeof text, "%s challenged you", c->name[0] ? c->name : "Someone");
+                new_chal = true;
+            } else {
+                for (int g = 0; g < h->n_games; g++)
+                    if (strcmp(h->games[g].id, now_ids[i]) == 0) {
+                        snprintf(text, sizeof text, "Your move against %s", h->games[g].opponent[0] ? h->games[g].opponent : "your opponent");
+                        new_game = h->games[g].id;
+                    }
+            }
+            new_text = text;
+        }
+    }
+    if (new_count > 1) snprintf(text, sizeof text, "%d games and challenges are waiting for you", new_count);
+    memcpy(seen, now_ids, sizeof now_ids[0] * n);
+    seen_n = n;
+    lvgl_port_lock(0);
+    eg_screens_set_badge(n > 0);
+    if (new_text) notify(text, new_count > 1 ? NULL : new_game, new_count > 1 || new_chal);
+    lvgl_port_unlock();
+}
 
 /* ---------- network task ---------- */
 
@@ -315,6 +516,7 @@ static void ensure_wifi(void)
 #else
     eg_store_load_wifi(ssid, pass);
 #endif
+    boot_status("Connecting to Wi-Fi...");
     if (ssid[0] && eg_bsp_wifi_connect(ssid, pass, 20000)) return;
     show(scr_wifi);
     request_scan();
@@ -353,6 +555,7 @@ static void net_task(void *arg)
     (void)arg;
     ensure_wifi();
     eg_ota_mark_good();                         /* this version gets online: keep it */
+    boot_status("Checking for updates...");
     eg_ota_check_and_update(show_updating);     /* restarts if there is a newer one */
     TickType_t last_update_check = xTaskGetTickCount();
     eg_store_load_token(token);
@@ -361,6 +564,7 @@ static void net_task(void *arg)
             while (!pair()) { /* expired: loop with a new code */ }
         }
         bool changed;
+        boot_status("Loading your pieces...");
         eg_pieces_load(token, &changed);
 
         enum { V_HOME, V_GAME, V_CHAL, V_QM } view = V_HOME;
@@ -417,10 +621,10 @@ static void net_task(void *arg)
                 if (view == V_QM) { view = V_HOME; next_poll = 0; }
                 if (view != V_GAME) {                 /* already in a matched game: the queue entry is gone */
                     eg_qm_status_t qs;
-                    r = eg_api_quick_match(token, "cancel", &qs, &scratch);
+                    r = eg_api_quick_match(token, "cancel", NULL, &qs, &scratch);
                     if (r == EG_OK) {
                         /* cancel only removes an unmatched entry; a match that landed first still opens */
-                        r = eg_api_quick_match(token, NULL, &qs, &scratch);
+                        r = eg_api_quick_match(token, NULL, NULL, &qs, &scratch);
                         if (r == EG_OK && qs == EG_QM_MATCHED) {
                             req.qm_join = false;
                             apply_game(&scratch); view = V_GAME; next_poll = now + pdMS_TO_TICKS(5000);
@@ -432,7 +636,7 @@ static void net_task(void *arg)
             if (req.qm_join) {
                 req.qm_join = false;
                 eg_qm_status_t qs;
-                r = eg_api_quick_match(token, "join", &qs, &scratch);
+                r = eg_api_quick_match(token, "join", qm_tc, &qs, &scratch);
                 if (r == EG_OK && qs == EG_QM_MATCHED) {
                     apply_game(&scratch); view = V_GAME; next_poll = now + pdMS_TO_TICKS(5000);
                 } else if (r == EG_OK && qs == EG_QM_WAITING) {
@@ -452,7 +656,7 @@ static void net_task(void *arg)
             }
             if (view == V_QM && (int32_t)(now - qm_next) >= 0) {
                 eg_qm_status_t qs;
-                r = eg_api_quick_match(token, NULL, &qs, &scratch);
+                r = eg_api_quick_match(token, NULL, NULL, &qs, &scratch);
                 uint32_t secs = (now - qm_started) / configTICK_RATE_HZ;
                 if (r == EG_OK && qs == EG_QM_MATCHED) {
                     apply_game(&scratch); view = V_GAME; next_poll = now + pdMS_TO_TICKS(5000);
@@ -461,7 +665,7 @@ static void net_task(void *arg)
                     lvgl_port_lock(0); eg_qm_set(scr_qm, "Matched! Open the game from Your games.", false); lvgl_port_unlock();
                 } else if ((r == EG_OK && qs == EG_QM_IDLE) || secs >= 5 * 60) {
                     /* the server drops entries after 5 minutes; stop on our side too */
-                    if (secs >= 5 * 60) eg_api_quick_match(token, "cancel", &qs, &scratch);
+                    if (secs >= 5 * 60) eg_api_quick_match(token, "cancel", NULL, &qs, &scratch);
                     view = V_HOME;
                     lvgl_port_lock(0); eg_qm_set(scr_qm, "No one else is looking right now. Try again, or play the computer.", false); lvgl_port_unlock();
                 } else if (r != EG_UNAUTHORIZED) {
@@ -565,13 +769,14 @@ static void net_task(void *arg)
             }
             if (req.thumbs) {
                 req.thumbs = false;
-                bool any = false;
+                lvgl_port_lock(0); eg_sets_set(scr_sets, &home); lvgl_port_unlock();   /* names first */
+                int fresh = 0;
                 for (int i = 0; i < home.n_sets; i++) {
-                    if (!eg_thumb_find(home.sets[i].preview_k) && eg_thumb_load(home.sets[i].preview_k)) any = true;
-                    if (!eg_thumb_find(home.sets[i].preview_n) && eg_thumb_load(home.sets[i].preview_n)) any = true;
+                    if (!eg_thumb_find(home.sets[i].preview_k) && eg_thumb_load(home.sets[i].preview_k)) fresh++;
+                    if (!eg_thumb_find(home.sets[i].preview_n) && eg_thumb_load(home.sets[i].preview_n)) fresh++;
+                    if (fresh >= 4) { fresh = 0; lvgl_port_lock(0); eg_sets_set(scr_sets, &home); lvgl_port_unlock(); }
                 }
-                (void)any;                       /* redraw anyway: home may have brought new sets */
-                lvgl_port_lock(0); eg_sets_set(scr_sets, &home); lvgl_port_unlock();
+                lvgl_port_lock(0); eg_sets_set(scr_sets, &home); lvgl_port_unlock();   /* the rest, and "Pieces missing" */
             }
             if (req.resign && view == V_GAME && have_game) {
                 req.resign = false;
@@ -610,6 +815,7 @@ static void net_task(void *arg)
                     if (r == EG_OK) { eg_home_set(scr_home, &home); eg_you_set(scr_you, &home); }
                     else if (r != EG_UNAUTHORIZED) eg_home_set_status(scr_home, "Couldn't load your games. Retrying...");
                     lvgl_port_unlock();
+                    if (r == EG_OK) check_waiting(&home);
                     if (view == V_CHAL && r == EG_OK && chal_seen_n >= 0) {
                         /* someone accepted: open the game that wasn't there when the link was made */
                         for (int i = 0; i < home.n_games; i++) {
@@ -632,6 +838,7 @@ static void net_task(void *arg)
                 }
                 if (r == EG_UNAUTHORIZED) { unauthorized = true; break; }
             }
+            keep_awake = view == V_GAME && have_game && cur.in_progress && cur.timed && cur.your_turn;
             vTaskDelay(pdMS_TO_TICKS(250));
         }
         ESP_LOGW(TAG, "401: wiping token and re-pairing");
@@ -647,6 +854,10 @@ void app_main(void)
     if (e == ESP_ERR_NVS_NO_FREE_PAGES || e == ESP_ERR_NVS_NEW_VERSION_FOUND) { nvs_flash_erase(); nvs_flash_init(); }
 
     if (!eg_bsp_init()) { ESP_LOGE(TAG, "display init failed"); return; }
+    lvgl_port_lock(0);
+    scr_boot = eg_boot_create(NULL);          /* something on screen right away */
+    lv_screen_load(scr_boot);
+    lvgl_port_unlock();
 
     /* LVGL's 256 KB pool is too small for every screen plus piece decoding: give it 8 MB of PSRAM. */
     {
@@ -668,11 +879,10 @@ void app_main(void)
                         .on_quick_match = on_home_quick, .on_find_player = on_home_find, .on_respond = on_respond};
     scr_home = eg_home_create(NULL, &hcb);
     scr_ai = eg_ai_setup_create(NULL, on_ai_start, on_sub_back);
-    scr_chal = eg_challenge_create(NULL, on_sub_back);
-    scr_qm = eg_qm_create(NULL, on_qm_cancel, on_qm_retry);
+    scr_chal = eg_challenge_create(NULL, on_chal_back);
+    scr_qm = eg_qm_create(NULL, on_qm_join, on_qm_cancel, on_qm_retry);
     eg_find_cb_t fcb = {.on_query = on_find_query, .on_send = on_find_send, .on_link = on_home_challenge, .on_back = on_sub_back};
     scr_find = eg_find_create(NULL, &fcb);
-    eg_challenge_set_find(scr_chal, on_home_find);
     scr_sets = eg_sets_create(NULL, on_pick_set, on_make);
     scr_make = eg_make_create(NULL, on_make_back);
     eg_sets_set_edit(scr_sets, on_set_rename, on_set_delete);
@@ -680,6 +890,7 @@ void app_main(void)
     scr_you = eg_you_create(NULL, on_forget, eg_ota_version());
     eg_game_cb_t cb = {.on_move = on_move, .on_resign = on_resign, .on_menu_home = on_menu_home, .on_clock_zero = on_clock_zero};
     scr_game = eg_game_create(NULL, &cb);
+    lv_timer_create(power_tick, 500, NULL);
     lvgl_port_unlock();
     xTaskCreate(scan_task, "scan", 10 * 1024, NULL, 4, &scan_task_h);
     xTaskCreate(net_task, "net", 16 * 1024, NULL, 5, NULL);

@@ -50,6 +50,8 @@ typedef struct { char id[40]; char name[33]; int elo; } eg_incoming_t;   /* a di
 typedef struct {
     char name[33];
     int elo;                    /* -1 before the first ranked game */
+    int wins, losses, draws;    /* finished games */
+    int win_rate;               /* percent, -1 when unranked */
     int n_incoming;
     eg_incoming_t incoming[EG_HOME_MAX_INCOMING];
     int n_games;
@@ -81,11 +83,12 @@ typedef enum { EG_QM_IDLE, EG_QM_WAITING, EG_QM_MATCHED } eg_qm_status_t;
 /* action "join" or "cancel" POSTs /board-quick-match; NULL GETs the current status (what you poll).
  * EG_OK fills *status, and *game when matched. EG_NO_GAME: matched, but the game didn't come back
  * (it is still in progress and shows up in board-home). */
-eg_result_t eg_api_quick_match(const char *token, const char *action, eg_qm_status_t *status, eg_game_t *game);
+eg_result_t eg_api_quick_match(const char *token, const char *action, const char *time_control, eg_qm_status_t *status, eg_game_t *game);
+/* time_control (join only): "3+2", "5+0", "10+0", "15+10", or "" for untimed. NULL leaves it out (server default 10+0). */
 
 #define EG_USERS_MAX 10
 typedef struct { char id[40]; char name[33]; int elo; } eg_user_t;
-/* GET /board-users?q=  q needs at least 2 characters (shorter returns no users). */
+/* GET /board-users?q=  The console searches from 3 characters. */
 eg_result_t eg_api_users(const char *token, const char *q, eg_user_t users[EG_USERS_MAX], int *n);
 
 /* POST /board-new-game {mode:"challenge", opponentId, first}. first: me | computer (they move first) | random.

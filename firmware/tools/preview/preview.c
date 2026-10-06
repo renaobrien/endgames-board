@@ -6,6 +6,7 @@
 #include "ui_screens.h"
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define W 800
@@ -84,6 +85,7 @@ int main(int argc, char **argv)
                       {"g3", "Stockfish", true, "expert", 'b', false, 3}},
             .sets = {{"default", "Default"}, {"s1", "Vaporwave Rena"}, {"s2", "Jon Bo"}}};
         for (int i = 0; i < 3; i++) { strcpy(h.sets[i].preview_k, "wk"); strcpy(h.sets[i].preview_n, "wn"); }
+        strcpy(h.sets[2].preview_k, "x"); strcpy(h.sets[2].preview_n, "x");   /* a set whose images are gone */
         if (strcmp(which, "sets-empty") == 0) { h.n_sets = 1; strcpy(h.active_set, "default"); }
         if (strncmp(which, "sets", 4) == 0) {
             lv_obj_t *ss = eg_sets_create(lv_screen_active(), NULL, NULL);
@@ -96,15 +98,21 @@ int main(int argc, char **argv)
         }
         else { eg_home_cb_t cb = {0}; eg_home_set(eg_home_create(lv_screen_active(), &cb), &h); }
     } else if (strcmp(which, "quick") == 0) {
-        eg_qm_set(eg_qm_create(lv_screen_active(), NULL, NULL), "Looking for an opponent... 0:42", true);
+        eg_qm_set(eg_qm_create(lv_screen_active(), NULL, NULL, NULL), "Looking for an opponent... 0:42", true);
     } else if (strcmp(which, "quick-none") == 0) {
-        eg_qm_set(eg_qm_create(lv_screen_active(), NULL, NULL), "No one else is looking right now. Try again, or play the computer.", false);
+        eg_qm_set(eg_qm_create(lv_screen_active(), NULL, NULL, NULL), "No one else is looking right now. Try again, or play the computer.", false);
+    } else if (strcmp(which, "quick-pick") == 0) {
+        eg_qm_create(lv_screen_active(), NULL, NULL, NULL);
     } else if (strcmp(which, "find") == 0 || strcmp(which, "find-confirm") == 0) {
         static const eg_user_t u[] = {{"u1", "magnus_fan", 1655}, {"u2", "magnolia", 1203}, {"u3", "magpie", 980}};
         eg_find_cb_t fcb = {0};
         lv_obj_t *f = eg_find_create(lv_screen_active(), &fcb);
         eg_find_set_results(f, u, 3, NULL);
         if (strcmp(which, "find-confirm") == 0) eg_find_confirm(f, 0);
+    } else if (strncmp(which, "boot", 4) == 0) {
+        eg_boot_set_status(eg_boot_create(lv_screen_active()), "Connecting to Wi-Fi...");
+        int frames = which[4] ? atoi(which + 4) : 0;
+        for (int i = 0; i < frames; i++) { lv_tick_inc(40); lv_timer_handler(); }
     } else if (strcmp(which, "make") == 0) {
         eg_make_create(lv_screen_active(), NULL);
     } else if (strcmp(which, "rank") == 0) {
@@ -113,8 +121,9 @@ int main(int argc, char **argv)
             {4, "deltajuliet", 1240, true}, {5, "pawnstar", 1180, false}, {6, "rookie", 1010, false}}};
         eg_rank_set(eg_rank_create(lv_screen_active()), &r, NULL);
     } else if (strcmp(which, "you") == 0) {
-        static eg_home_t h = {.name = "deltajuliet", .elo = 1240};
-        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.10.0"), &h);
+        static eg_home_t h = {.name = "deltajuliet", .elo = 1240, .wins = 20, .losses = 18, .draws = 4, .win_rate = 48};
+        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.13.0"), &h);
+        if (argc > 3) eg_test_pattern();
     } else if (strcmp(which, "ai") == 0) {
         eg_ai_setup_create(lv_screen_active(), NULL, NULL);
     } else if (strcmp(which, "challenge") == 0) {

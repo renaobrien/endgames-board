@@ -298,6 +298,69 @@ static lv_obj_t *pill(lv_obj_t *p, const char *text, lv_color_t bg, int x, int y
     return b;
 }
 
+/* ---------- header: one slim bar on every screen ----------
+ * 52 px: Back (when there is somewhere to go back to) on the left, the title in the screen's accent,
+ * and room on the right for one action. */
+
+lv_obj_t *eg_header(lv_obj_t *s, const char *title, lv_color_t accent, lv_event_cb_t back_cb, void *ud, lv_obj_t **back_out)
+{
+    lv_obj_t *bar = lv_obj_create(s);
+    lv_obj_remove_flag(bar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(bar, 800, EG_HDR_H);
+    lv_obj_set_pos(bar, 0, 0);
+    lv_obj_set_style_bg_color(bar, EG_BG_VOID, 0);
+    lv_obj_set_style_bg_opa(bar, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(bar, 2, 0);
+    lv_obj_set_style_border_side(bar, LV_BORDER_SIDE_BOTTOM, 0);
+    lv_obj_set_style_border_color(bar, EG_SURFACE, 0);
+    lv_obj_set_style_radius(bar, 0, 0);
+    lv_obj_set_style_pad_all(bar, 0, 0);
+    int tx = 24;
+    lv_obj_t *b = NULL;
+    if (back_cb) {
+        b = lv_button_create(bar);
+        lv_obj_set_size(b, 128, 40);
+        lv_obj_set_pos(b, 8, 5);
+        lv_obj_set_style_bg_color(b, EG_SURFACE, 0);
+        lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+        lv_obj_set_style_shadow_width(b, 0, 0);
+        lv_obj_set_style_border_width(b, 2, 0);
+        lv_obj_set_style_border_color(b, accent, 0);
+        lv_obj_set_style_pad_all(b, 0, 0);
+        lv_obj_t *ic = label(b, &lv_font_montserrat_20, accent, LV_SYMBOL_LEFT);
+        lv_obj_align(ic, LV_ALIGN_LEFT_MID, 14, 0);
+        lv_obj_t *t = label(b, &eg_sora_20_bold, EG_FG, "Back");
+        lv_obj_align(t, LV_ALIGN_LEFT_MID, 40, 0);
+        lv_obj_add_event_cb(b, back_cb, LV_EVENT_CLICKED, ud);
+        tx = 152;
+    }
+    lv_obj_t *t = label(bar, &eg_sora_20_bold, accent, title);
+    lv_obj_align(t, LV_ALIGN_LEFT_MID, tx, 0);
+    if (back_out) *back_out = b;
+    return bar;
+}
+
+/* Back button text: "Back" or "Cancel". */
+void eg_header_back_text(lv_obj_t *back, const char *text)
+{
+    if (back) lv_label_set_text(lv_obj_get_child(back, 1), text);
+}
+
+/* A pill in the header's right-hand slot. */
+static lv_obj_t *header_action(lv_obj_t *bar, const char *text, lv_color_t bg, lv_color_t fg, int w)
+{
+    lv_obj_t *b = lv_button_create(bar);
+    lv_obj_set_size(b, w, 40);
+    lv_obj_align(b, LV_ALIGN_RIGHT_MID, -8, 0);
+    lv_obj_set_style_bg_color(b, bg, 0);
+    lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_shadow_width(b, 0, 0);
+    lv_obj_t *l = label(b, &eg_sora_16, fg, text);
+    lv_obj_set_style_text_font(l, &eg_sora_20_bold, 0);
+    lv_obj_center(l);
+    return b;
+}
+
 lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect, void (*on_rescan)(void), void (*on_back)(void))
 {
     lv_obj_t *s = base(parent);
@@ -309,8 +372,7 @@ lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect, void (*on_re
     lv_obj_set_user_data(s, w);
 
     lv_obj_set_style_text_font(s, &eg_sora_20, 0);
-    lv_obj_t *t = label(s, &eg_bungee_28, EG_CYAN, "CONNECT TO WI-FI");
-    lv_obj_set_pos(t, 40, 20);
+    eg_header(s, "Connect to Wi-Fi", EG_CYAN, back_cb, w, &w->back_btn);
 
     /* network dropdown + rescan */
     w->dd = lv_dropdown_create(s);
@@ -365,8 +427,6 @@ lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect, void (*on_re
     lv_obj_set_width(w->err, 520);
     lv_obj_set_pos(w->err, 236, 212);
 
-    w->back_btn = pill(s, "Back", EG_SURFACE, 640, 16, 120, 44);
-    lv_obj_add_event_cb(w->back_btn, back_cb, LV_EVENT_CLICKED, w);
     lv_obj_add_flag(w->back_btn, LV_OBJ_FLAG_HIDDEN);
 
     w->k = kbd_create(s, enter_cb, w);
@@ -463,22 +523,21 @@ lv_obj_t *eg_pair_create(lv_obj_t *parent)
     lv_obj_center(p->qr);
 
     /* right: instructions and the typed fallback */
-    lv_obj_t *t = label(s, &eg_bungee_28, EG_YELLOW, "PAIR THIS CONSOLE");
-    lv_obj_set_pos(t, 410, 90);
-    lv_obj_t *a1 = label(s, &eg_sora_20, EG_FG, "Scan with your phone.");
-    lv_obj_set_pos(a1, 410, 150);
+    eg_header(s, "Pair this console", EG_YELLOW, NULL, NULL, NULL);
+    lv_obj_t *a1 = label(s, &eg_sora_20_bold, EG_FG, "Scan with your phone.");
+    lv_obj_set_pos(a1, 410, 100);
     lv_obj_t *a2 = label(s, &eg_sora_16, EG_FG_HAZE, "No camera? Go to");
-    lv_obj_set_pos(a2, 410, 206);
+    lv_obj_set_pos(a2, 410, 156);
     lv_obj_t *u = label(s, &eg_sora_20_bold, EG_CYAN, "endgam.es/board/pair");
-    lv_obj_set_pos(u, 410, 230);
+    lv_obj_set_pos(u, 410, 180);
     lv_obj_t *a3 = label(s, &eg_sora_16, EG_FG_HAZE, "and enter");
-    lv_obj_set_pos(a3, 410, 262);
+    lv_obj_set_pos(a3, 410, 212);
     p->code = label(s, &eg_bungee_44, EG_PINK, "------");
     lv_obj_set_style_text_letter_space(p->code, 8, 0);
-    lv_obj_set_pos(p->code, 410, 288);
+    lv_obj_set_pos(p->code, 410, 238);
 
     p->status = label(s, &eg_sora_16, EG_FG_MIST, "");
-    lv_obj_set_pos(p->status, 410, 360);
+    lv_obj_set_pos(p->status, 410, 310);
     add_wifi_button(s);
     return s;
 }
@@ -550,13 +609,6 @@ const char *eg_difficulty_label(const char *v)
     return v;
 }
 
-static lv_obj_t *back_button(lv_obj_t *s, lv_event_cb_t cb, void *ud)
-{
-    lv_obj_t *b = pill(s, "Back", EG_SURFACE, 640, 16, 120, 44);
-    lv_obj_add_event_cb(b, cb, LV_EVENT_CLICKED, ud);
-    return b;
-}
-
 static lv_obj_t *big_button(lv_obj_t *s, const char *text, lv_color_t bg, lv_color_t fg, int x, int y, int w, int h)
 {
     lv_obj_t *b = lv_button_create(s);
@@ -570,9 +622,12 @@ static lv_obj_t *big_button(lv_obj_t *s, const char *text, lv_color_t bg, lv_col
     return b;
 }
 
-/* ---------- bottom tab bar (same tabs as the website: Play, Make, Sets, Rank, You) ---------- */
+/* ---------- bottom tab bar (same four tabs as the website: Play, Sets, Rank, You) ---------- */
 
 static void (*s_on_tab)(int);
+static lv_obj_t *s_badges[4];
+static int s_badges_n;
+static bool s_badge_on;
 void eg_screens_set_tab_handler(void (*on_tab)(int)) { s_on_tab = on_tab; }
 
 static void tab_cb(lv_event_t *e)
@@ -607,8 +662,29 @@ static void add_nav(lv_obj_t *s, int active)
         lv_obj_set_style_border_side(b, LV_BORDER_SIDE_TOP, 0);
         lv_obj_set_style_border_color(b, accents[i], 0);
         lv_obj_set_style_radius(b, 0, 0);
-        lv_obj_center(label(b, &eg_sora_20_bold, i == active ? accents[i] : EG_FG_MIST, names[i]));
+        lv_obj_t *nl = label(b, &eg_sora_20_bold, i == active ? accents[i] : EG_FG_MIST, names[i]);
+        lv_obj_center(nl);
         if (i != active) lv_obj_add_event_cb(b, tab_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+        if (i == 0 && s_badges_n < 4) {          /* dot on Play: something is waiting for you */
+            lv_obj_t *d = lv_obj_create(b);
+            lv_obj_remove_flag(d, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+            lv_obj_set_size(d, 12, 12);
+            lv_obj_align_to(d, nl, LV_ALIGN_OUT_RIGHT_TOP, 4, -4);
+            lv_obj_set_style_radius(d, LV_RADIUS_CIRCLE, 0);
+            lv_obj_set_style_bg_color(d, EG_PINK, 0);
+            lv_obj_set_style_border_width(d, 0, 0);
+            if (!s_badge_on) lv_obj_add_flag(d, LV_OBJ_FLAG_HIDDEN);
+            s_badges[s_badges_n++] = d;
+        }
+    }
+}
+
+void eg_screens_set_badge(bool on)
+{
+    s_badge_on = on;
+    for (int i = 0; i < s_badges_n; i++) {
+        if (on) lv_obj_remove_flag(s_badges[i], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(s_badges[i], LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -668,16 +744,17 @@ lv_obj_t *eg_home_create(lv_obj_t *parent, const eg_home_cb_t *cb)
     h->cb = *cb;
     lv_obj_set_user_data(s, h);
 
+    eg_header(s, "Play", EG_CYAN, NULL, NULL, NULL);
     /* Three ways to start a game, stacked on the left; your games on the right. */
-    lv_obj_add_event_cb(big_button(s, "Play the computer", EG_PINK, lv_color_white(), 24, 24, 300, 114), home_play_cb, LV_EVENT_CLICKED, h);
-    lv_obj_add_event_cb(big_button(s, "Quick match", EG_CYAN, EG_BG_VOID, 24, 152, 300, 114), home_quick_cb, LV_EVENT_CLICKED, h);
-    lv_obj_add_event_cb(big_button(s, "Challenge a player", EG_YELLOW, EG_BG_VOID, 24, 280, 300, 114), home_find_cb, LV_EVENT_CLICKED, h);
+    lv_obj_add_event_cb(big_button(s, "Play the computer", EG_PINK, lv_color_white(), 24, 66, 300, 104), home_play_cb, LV_EVENT_CLICKED, h);
+    lv_obj_add_event_cb(big_button(s, "Quick match", EG_CYAN, EG_BG_VOID, 24, 182, 300, 104), home_quick_cb, LV_EVENT_CLICKED, h);
+    lv_obj_add_event_cb(big_button(s, "Challenge a player", EG_YELLOW, EG_BG_VOID, 24, 298, 300, 104), home_find_cb, LV_EVENT_CLICKED, h);
 
-    lv_obj_t *gt = label(s, &eg_sora_20_bold, EG_YELLOW, "Your games");
-    lv_obj_set_pos(gt, 348, 24);
+    lv_obj_t *gt = label(s, &eg_sora_16, EG_FG_HAZE, "Your games");
+    lv_obj_set_pos(gt, 348, 64);
     h->list = lv_obj_create(s);
-    lv_obj_set_size(h->list, 428, 338);
-    lv_obj_set_pos(h->list, 348, 56);
+    lv_obj_set_size(h->list, 428, 314);
+    lv_obj_set_pos(h->list, 348, 88);
     lv_obj_set_flex_flow(h->list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_bg_opa(h->list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(h->list, 0, 0);
@@ -686,7 +763,7 @@ lv_obj_t *eg_home_create(lv_obj_t *parent, const eg_home_cb_t *cb)
     lv_obj_set_scroll_dir(h->list, LV_DIR_VER);
 
     h->status = label(s, &eg_sora_16, EG_FG_MIST, "Loading...");
-    lv_obj_set_pos(h->status, 348, 64);
+    lv_obj_set_pos(h->status, 348, 96);
     add_nav(s, 0);
     return s;
 }
@@ -821,25 +898,24 @@ lv_obj_t *eg_ai_setup_create(lv_obj_t *parent, void (*on_start)(const char *, co
     a->c = 2;                          /* Random */
     lv_obj_set_user_data(s, a);
 
-    lv_obj_set_pos(label(s, &eg_bungee_28, EG_PINK, "PLAY THE COMPUTER"), 40, 22);
-    back_button(s, ai_back_cb, a);
+    eg_header(s, "Play the computer", EG_PINK, ai_back_cb, a, NULL);
 
-    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "Difficulty"), 40, 96);
+    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "Difficulty"), 40, 76);
     for (int i = 0; i < 4; i++) {
-        a->diff[i] = seg_button(s, DIFF_UI[i], 40 + i * 182, 128, 170);
+        a->diff[i] = seg_button(s, DIFF_UI[i], 40 + i * 182, 108, 170);
         lv_obj_add_event_cb(a->diff[i], ai_diff_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
-    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "Who goes first"), 40, 222);
+    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "Who goes first"), 40, 202);
     for (int i = 0; i < 3; i++) {
-        a->col[i] = seg_button(s, COL_UI[i], 40 + i * 242, 254, 230);
+        a->col[i] = seg_button(s, COL_UI[i], 40 + i * 242, 234, 230);
         lv_obj_add_event_cb(a->col[i], ai_col_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
     }
     seg_paint(a->diff, 4, a->d);
     seg_paint(a->col, 3, a->c);
 
-    lv_obj_add_event_cb(pill(s, "Start", EG_PINK, 40, 366, 240, 64), ai_start_cb, LV_EVENT_CLICKED, a);
+    lv_obj_add_event_cb(pill(s, "Start", EG_PINK, 40, 346, 240, 64), ai_start_cb, LV_EVENT_CLICKED, a);
     a->status = label(s, &eg_sora_16, EG_MAGENTA, "");
-    lv_obj_set_pos(a->status, 300, 388);
+    lv_obj_set_pos(a->status, 300, 368);
     return s;
 }
 
@@ -851,16 +927,9 @@ void eg_ai_setup_set_status(lv_obj_t *screen, const char *msg)
 
 /* ---------- challenge a friend ---------- */
 
-typedef struct { void (*back)(void); void (*find)(void); lv_obj_t *tile, *qr, *status; } chal_t;
+typedef struct { void (*back)(void); lv_obj_t *tile, *qr, *status; } chal_t;
 
 static void chal_back_cb(lv_event_t *e) { chal_t *c = lv_event_get_user_data(e); if (c->back) c->back(); }
-static void chal_find_cb(lv_event_t *e) { chal_t *c = lv_event_get_user_data(e); if (c->find) c->find(); }
-
-void eg_challenge_set_find(lv_obj_t *screen, void (*on_find)(void))
-{
-    chal_t *c = lv_obj_get_user_data(screen);
-    c->find = on_find;
-}
 
 lv_obj_t *eg_challenge_create(lv_obj_t *parent, void (*on_back)(void))
 {
@@ -873,7 +942,7 @@ lv_obj_t *eg_challenge_create(lv_obj_t *parent, void (*on_back)(void))
     c->tile = lv_obj_create(s);
     lv_obj_remove_flag(c->tile, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(c->tile, 300, 300);
-    lv_obj_set_pos(c->tile, 60, 100);
+    lv_obj_set_pos(c->tile, 60, 90);
     lv_obj_set_style_bg_color(c->tile, lv_color_white(), 0);
     lv_obj_set_style_border_width(c->tile, 0, 0);
     lv_obj_set_style_radius(c->tile, 16, 0);
@@ -885,22 +954,15 @@ lv_obj_t *eg_challenge_create(lv_obj_t *parent, void (*on_back)(void))
     lv_obj_center(c->qr);
     lv_obj_add_flag(c->tile, LV_OBJ_FLAG_HIDDEN);
 
-    lv_obj_set_pos(label(s, &eg_bungee_28, EG_CYAN, "CHALLENGE A FRIEND"), 40, 22);
-    back_button(s, chal_back_cb, c);
-    lv_obj_t *a1 = label(s, &eg_sora_20, EG_FG, "Have them scan this.");
-    lv_obj_set_pos(a1, 400, 140);
-    lv_obj_t *a2 = label(s, &eg_sora_16, EG_FG_HAZE, "They play against your piece set.\nThe game opens here when they join.");
-    lv_obj_set_pos(a2, 400, 180);
+    eg_header(s, "Send a link", EG_YELLOW, chal_back_cb, c, NULL);
+    lv_obj_t *a1 = label(s, &eg_sora_20_bold, EG_FG, "Have them scan this.");
+    lv_obj_set_pos(a1, 400, 130);
+    lv_obj_t *a2 = label(s, &eg_sora_16, EG_FG_HAZE, "It opens on their phone. They play against\nyour set, and the game opens here\nwhen they join.");
+    lv_obj_set_pos(a2, 400, 170);
     c->status = label(s, &eg_sora_16, EG_FG_MIST, "");
     lv_label_set_long_mode(c->status, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(c->status, 360);
-    lv_obj_set_pos(c->status, 400, 250);
-
-    /* the QR only works for someone in the room */
-    lv_obj_set_pos(label(s, &eg_sora_16, EG_FG_HAZE, "Not in the room with you?"), 400, 306);
-    lv_obj_t *fb = pill(s, "Challenge a player", EG_YELLOW, 400, 334, 300, 56);
-    lv_obj_set_style_text_color(lv_obj_get_child(fb, 0), EG_BG_VOID, 0);
-    lv_obj_add_event_cb(fb, chal_find_cb, LV_EVENT_CLICKED, c);
+    lv_obj_set_pos(c->status, 400, 270);
     return s;
 }
 
@@ -918,53 +980,99 @@ void eg_challenge_set(lv_obj_t *screen, const char *url, const char *status)
 
 /* ---------- quick match ---------- */
 
-typedef struct { void (*cancel)(void); void (*retry)(void); lv_obj_t *msg, *cancel_lbl, *retry_btn; } qm_t;
+/* Time controls, same labels and order as the website. "" is untimed. */
+static const char *TC_API[5] = {"", "3+2", "5+0", "10+0", "15+10"};
+static const char *TC_UI[5] = {"Untimed", "3+2", "5+0", "10+0", "15+10"};
+
+typedef struct {
+    void (*join)(const char *); void (*cancel)(void); void (*retry)(void);
+    lv_obj_t *back, *msg, *hint, *retry_btn, *pick_lbl, *tcb[5], *go;
+    int tc;
+} qm_t;
 
 static void qm_cancel_cb(lv_event_t *e) { qm_t *q = lv_event_get_user_data(e); if (q->cancel) q->cancel(); }
 static void qm_retry_cb(lv_event_t *e) { qm_t *q = lv_event_get_user_data(e); if (q->retry) q->retry(); }
+static void qm_tc_cb(lv_event_t *e)
+{
+    qm_t *q = lv_obj_get_user_data(lv_event_get_target(e));
+    q->tc = (int)(intptr_t)lv_event_get_user_data(e);
+    seg_paint(q->tcb, 5, q->tc);
+}
+static void qm_go_cb(lv_event_t *e) { qm_t *q = lv_event_get_user_data(e); if (q->join) q->join(TC_API[q->tc]); }
 
-lv_obj_t *eg_qm_create(lv_obj_t *parent, void (*on_cancel)(void), void (*on_retry)(void))
+static void qm_show_pick(qm_t *q, bool on)
+{
+    lv_obj_t *objs[7] = {q->pick_lbl, q->go, q->tcb[0], q->tcb[1], q->tcb[2], q->tcb[3], q->tcb[4]};
+    for (int i = 0; i < 7; i++) {
+        if (on) lv_obj_remove_flag(objs[i], LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(objs[i], LV_OBJ_FLAG_HIDDEN);
+    }
+    if (on) { lv_obj_add_flag(q->msg, LV_OBJ_FLAG_HIDDEN); lv_obj_add_flag(q->retry_btn, LV_OBJ_FLAG_HIDDEN); }
+    else lv_obj_remove_flag(q->msg, LV_OBJ_FLAG_HIDDEN);
+}
+
+lv_obj_t *eg_qm_create(lv_obj_t *parent, void (*on_join)(const char *), void (*on_cancel)(void), void (*on_retry)(void))
 {
     lv_obj_t *s = base(parent);
     qm_t *q = lv_malloc(sizeof *q);
     memset(q, 0, sizeof *q);
+    q->join = on_join;
     q->cancel = on_cancel;
     q->retry = on_retry;
+    q->tc = 3;                                   /* 10+0, the server's default */
     lv_obj_set_user_data(s, q);
 
-    lv_obj_set_pos(label(s, &eg_bungee_28, EG_CYAN, "QUICK MATCH"), 40, 22);
-    lv_obj_t *c = pill(s, "Cancel", EG_SURFACE, 640, 16, 120, 44);
-    q->cancel_lbl = lv_obj_get_child(c, 0);
-    lv_obj_add_event_cb(c, qm_cancel_cb, LV_EVENT_CLICKED, q);
+    eg_header(s, "Quick match", EG_CYAN, qm_cancel_cb, q, &q->back);
 
-    q->msg = label(s, &eg_sora_20, EG_FG, "Looking for an opponent...");
+    q->pick_lbl = label(s, &eg_sora_20_bold, EG_YELLOW, "Clock");
+    lv_obj_set_pos(q->pick_lbl, 40, 76);
+    for (int i = 0; i < 5; i++) {
+        q->tcb[i] = seg_button(s, TC_UI[i], 40 + i * 146, 108, 134);
+        lv_obj_set_user_data(q->tcb[i], q);
+        lv_obj_add_event_cb(q->tcb[i], qm_tc_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+    seg_paint(q->tcb, 5, q->tc);
+    q->go = pill(s, "Find a match", EG_CYAN, 40, 214, 280, 64);
+    lv_obj_set_style_text_color(lv_obj_get_child(q->go, 0), EG_BG_VOID, 0);
+    lv_obj_add_event_cb(q->go, qm_go_cb, LV_EVENT_CLICKED, q);
+
+    q->msg = label(s, &eg_sora_20_bold, EG_FG, "Looking for an opponent...");
     lv_label_set_long_mode(q->msg, LV_LABEL_LONG_WRAP);
     lv_obj_set_width(q->msg, 720);
-    lv_obj_set_pos(q->msg, 40, 150);
-    lv_obj_t *hint = label(s, &eg_sora_16, EG_FG_HAZE, "You get the first player who is also looking.\nYou play with your piece set.");
-    lv_obj_set_pos(hint, 40, 230);
+    lv_obj_set_pos(q->msg, 40, 110);
+    q->hint = label(s, &eg_sora_16, EG_FG_HAZE, "You get the first player who wants the same clock.\nYou play with your piece set.");
+    lv_obj_set_pos(q->hint, 40, 310);
 
-    q->retry_btn = pill(s, "Try again", EG_CYAN, 40, 330, 240, 64);
+    q->retry_btn = pill(s, "Try again", EG_CYAN, 40, 200, 240, 64);
     lv_obj_set_style_text_color(lv_obj_get_child(q->retry_btn, 0), EG_BG_VOID, 0);
     lv_obj_add_event_cb(q->retry_btn, qm_retry_cb, LV_EVENT_CLICKED, q);
-    lv_obj_add_flag(q->retry_btn, LV_OBJ_FLAG_HIDDEN);
+    qm_show_pick(q, true);
     return s;
+}
+
+void eg_qm_pick(lv_obj_t *screen)
+{
+    qm_t *q = lv_obj_get_user_data(screen);
+    eg_header_back_text(q->back, "Back");
+    qm_show_pick(q, true);
 }
 
 void eg_qm_set(lv_obj_t *screen, const char *msg, bool searching)
 {
     qm_t *q = lv_obj_get_user_data(screen);
+    qm_show_pick(q, false);
     lv_label_set_text(q->msg, msg ? msg : "");
-    lv_label_set_text(q->cancel_lbl, searching ? "Cancel" : "Back");
+    eg_header_back_text(q->back, searching ? "Cancel" : "Back");
     if (searching) lv_obj_add_flag(q->retry_btn, LV_OBJ_FLAG_HIDDEN);
     else lv_obj_remove_flag(q->retry_btn, LV_OBJ_FLAG_HIDDEN);
 }
 
 /* ---------- challenge a player ---------- */
 
-#define FIND_LIST_Y 126
-#define FIND_LIST_H_KB 130            /* list height while the keyboard is up (keyboard starts at y 264) */
-#define FIND_LIST_H_FULL 330
+#define FIND_LIST_Y 118
+#define FIND_LIST_H_KB 140            /* list height while the keyboard is up (keyboard starts at y 264) */
+#define FIND_LIST_H_FULL 350
+#define FIND_MIN 3                    /* letters before searching */
 
 typedef struct {
     eg_find_cb_t cb;
@@ -990,7 +1098,7 @@ static void find_text_cb(lv_event_t *e)
 {
     find_t *f = lv_event_get_user_data(e);
     const char *q = lv_textarea_get_text(f->ta);
-    if (strlen(q) < 2) eg_find_set_results(f->root, NULL, 0, "Type at least 2 letters of their name.");
+    if (strlen(q) < FIND_MIN) eg_find_set_results(f->root, NULL, 0, "Type at least 3 letters of their name.");
     else lv_label_set_text(f->msg, "Searching...");
     if (f->cb.on_query) f->cb.on_query(q);
 }
@@ -1005,9 +1113,6 @@ static void find_first_cb(lv_event_t *e)
     f->f = (int)(intptr_t)lv_event_get_user_data(e);
     seg_paint(f->first, 3, f->f);
 }
-
-static const char *TC_API[5] = {"", "3+2", "5+0", "10+0", "15+10"};
-static const char *TC_UI[5] = {"Untimed", "3+2", "5+0", "10+0", "15+10"};
 
 static void find_tc_cb(lv_event_t *e)
 {
@@ -1049,15 +1154,17 @@ lv_obj_t *eg_find_create(lv_obj_t *parent, const eg_find_cb_t *cb)
     f->root = s;
     lv_obj_set_user_data(s, f);
 
-    lv_obj_set_pos(label(s, &eg_bungee_28, EG_YELLOW, "CHALLENGE A PLAYER"), 40, 16);
-    back_button(s, find_back_cb, f);
+    lv_obj_t *hdr = eg_header(s, "Challenge a player", EG_YELLOW, find_back_cb, f, NULL);
+    /* not on Endgames yet, or in the room with you: a link (QR) instead */
+    lv_obj_t *link = header_action(hdr, "Send a link instead", EG_SURFACE, EG_FG, 236);
+    lv_obj_add_event_cb(link, find_link_cb, LV_EVENT_CLICKED, f);
 
     f->ta = lv_textarea_create(s);
     lv_textarea_set_one_line(f->ta, true);
     lv_textarea_set_max_length(f->ta, 30);
     lv_textarea_set_placeholder_text(f->ta, "Their name");
-    lv_obj_set_size(f->ta, 440, 52);
-    lv_obj_set_pos(f->ta, 40, 66);
+    lv_obj_set_size(f->ta, 720, 52);
+    lv_obj_set_pos(f->ta, 40, 60);
     lv_obj_set_style_bg_color(f->ta, lv_color_hex(0x3A1A85), 0);
     lv_obj_set_style_text_color(f->ta, EG_FG, 0);
     lv_obj_set_style_text_font(f->ta, &eg_sora_20, 0);
@@ -1067,9 +1174,6 @@ lv_obj_t *eg_find_create(lv_obj_t *parent, const eg_find_cb_t *cb)
     lv_obj_add_state(f->ta, LV_STATE_FOCUSED);
     lv_obj_add_event_cb(f->ta, find_text_cb, LV_EVENT_VALUE_CHANGED, f);
     lv_obj_add_event_cb(f->ta, find_ta_click_cb, LV_EVENT_CLICKED, f);
-
-    lv_obj_t *link = pill(s, "Share a link", EG_SURFACE, 500, 66, 260, 52);
-    lv_obj_add_event_cb(link, find_link_cb, LV_EVENT_CLICKED, f);
 
     f->list = lv_obj_create(s);
     lv_obj_set_size(f->list, 720, FIND_LIST_H_KB);
@@ -1089,8 +1193,7 @@ lv_obj_t *eg_find_create(lv_obj_t *parent, const eg_find_cb_t *cb)
     /* Confirm panel covers the screen. */
     f->panel = base(s);
     lv_obj_add_flag(f->panel, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_pos(label(f->panel, &eg_bungee_28, EG_YELLOW, "CHALLENGE A PLAYER"), 40, 16);
-    lv_obj_add_event_cb(pill(f->panel, "Back", EG_SURFACE, 640, 16, 120, 44), find_panel_back_cb, LV_EVENT_CLICKED, f);
+    eg_header(f->panel, "Challenge a player", EG_YELLOW, find_panel_back_cb, f, NULL);
     f->who = label(f->panel, &eg_sora_20_bold, EG_FG, "");
     lv_label_set_long_mode(f->who, LV_LABEL_LONG_DOT);
     lv_obj_set_width(f->who, 720);
@@ -1129,9 +1232,9 @@ void eg_find_reset(lv_obj_t *screen)
     f->pick = -1;
     f->n = 0;
     lv_obj_add_flag(f->panel, LV_OBJ_FLAG_HIDDEN);
-    lv_textarea_set_text(f->ta, "");          /* fires VALUE_CHANGED: shows the 2-letter hint */
+    lv_textarea_set_text(f->ta, "");          /* fires VALUE_CHANGED: shows the 3-letter hint */
     lv_obj_clean(f->list);
-    lv_label_set_text(f->msg, "Type at least 2 letters of their name.");
+    lv_label_set_text(f->msg, "Type at least 3 letters of their name.");
     find_keyboard(f, true);
 }
 
@@ -1234,14 +1337,13 @@ lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *), void (
     t->pick = on_pick;
     t->make = on_make;
     lv_obj_set_user_data(s, t);
-    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_YELLOW, "Piece sets"), 24, 20);
-    lv_obj_set_pos(label(s, &eg_sora_16, EG_FG_HAZE, "Tap one to play with it here and on the web."), 160, 23);
-    lv_obj_t *mk = pill(s, "Make a new set", EG_YELLOW, 556, 12, 220, 44);
-    lv_obj_set_style_text_color(lv_obj_get_child(mk, 0), EG_BG_VOID, 0);
+    lv_obj_t *hdr = eg_header(s, "Sets", EG_YELLOW, NULL, NULL, NULL);
+    lv_obj_set_pos(label(hdr, &eg_sora_16, EG_FG_HAZE, "Tap one to play with it here and on the web."), 90, 15);
+    lv_obj_t *mk = header_action(hdr, "Make a new set", EG_YELLOW, EG_BG_VOID, 200);
     lv_obj_add_event_cb(mk, sets_make_cb, LV_EVENT_CLICKED, t);
     t->list = lv_obj_create(s);
-    lv_obj_set_size(t->list, 752, 340);
-    lv_obj_set_pos(t->list, 24, 68);
+    lv_obj_set_size(t->list, 752, 348);
+    lv_obj_set_pos(t->list, 24, 62);
     lv_obj_set_flex_flow(t->list, LV_FLEX_FLOW_ROW_WRAP);
     lv_obj_set_style_bg_opa(t->list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(t->list, 0, 0);
@@ -1253,8 +1355,7 @@ lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *), void (
     t->edit = -1;
     t->panel = base(s);
     lv_obj_add_flag(t->panel, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_pos(label(t->panel, &eg_bungee_28, EG_YELLOW, "EDIT SET"), 40, 16);
-    lv_obj_add_event_cb(pill(t->panel, "Back", EG_SURFACE, 640, 16, 120, 44), sets_edit_back_cb, LV_EVENT_CLICKED, t);
+    eg_header(t->panel, "Edit set", EG_YELLOW, sets_edit_back_cb, t, NULL);
     t->ta = lv_textarea_create(t->panel);
     lv_textarea_set_one_line(t->ta, true);
     lv_textarea_set_max_length(t->ta, 32);
@@ -1378,7 +1479,12 @@ static void set_tile(sets_t *t, const eg_set_t *st, const char *name, bool activ
     const void *k = eg_thumb_find(st->preview_k), *n = eg_thumb_find(st->preview_n);
     if (k) { lv_obj_t *im = lv_image_create(tile); lv_image_set_src(im, k); lv_obj_align(im, LV_ALIGN_LEFT_MID, 6, 0); }
     if (n) { lv_obj_t *im = lv_image_create(tile); lv_image_set_src(im, n); lv_obj_align(im, LV_ALIGN_RIGHT_MID, -6, 0); }
-    if (!k && !n) { lv_obj_t *w = label(tile, &eg_sora_16, EG_BG_VOID, "Loading..."); lv_obj_center(w); }
+    if (!k && !n) {                          /* not downloaded yet, or the set's images are gone */
+        bool dead = !st->preview_k[0] || eg_thumb_failed(st->preview_k);
+        lv_obj_t *w = label(tile, &eg_sora_16, EG_BG_VOID, dead ? "Pieces\nmissing" : "Loading...");
+        lv_obj_set_style_text_align(w, LV_TEXT_ALIGN_CENTER, 0);
+        lv_obj_center(w);
+    }
     lv_obj_t *l = label(b, &eg_sora_20_bold, EG_FG, name);
     lv_label_set_long_mode(l, LV_LABEL_LONG_DOT);
     bool editable = EG_SET_EDIT && strcmp(st->id, "default") != 0;
@@ -1443,7 +1549,7 @@ lv_obj_t *eg_make_create(lv_obj_t *parent, void (*on_back)(void))
     lv_obj_t *tile = lv_obj_create(s);
     lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
     lv_obj_set_size(tile, 340, 340);
-    lv_obj_set_pos(tile, 60, 70);
+    lv_obj_set_pos(tile, 60, 76);
     lv_obj_set_style_bg_color(tile, lv_color_white(), 0);
     lv_obj_set_style_border_width(tile, 0, 0);
     lv_obj_set_style_radius(tile, 16, 0);
@@ -1454,11 +1560,10 @@ lv_obj_t *eg_make_create(lv_obj_t *parent, void (*on_back)(void))
     lv_qrcode_set_light_color(qr, lv_color_white());
     lv_qrcode_update(qr, EG_MAKE_URL, strlen(EG_MAKE_URL));
     lv_obj_center(qr);
-    lv_obj_set_pos(label(s, &eg_bungee_28, EG_YELLOW, "MAKE A SET"), 440, 110);
-    lv_obj_set_pos(label(s, &eg_sora_20, EG_FG, "Scan to make one\non your phone."), 440, 166);
+    eg_header(s, "Make a set", EG_YELLOW, make_back_cb, m, NULL);
+    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_FG, "Scan to make one\non your phone."), 440, 120);
     lv_obj_t *t = label(s, &eg_sora_16, EG_FG_HAZE, "Pick a photo. Its colors and mood\nbecome a full piece set.\nIt shows up in Sets when it's ready.");
-    lv_obj_set_pos(t, 440, 240);
-    back_button(s, make_back_cb, m);
+    lv_obj_set_pos(t, 440, 190);
     return s;
 }
 
@@ -1472,19 +1577,19 @@ lv_obj_t *eg_rank_create(lv_obj_t *parent)
     rank_ui_t *r = lv_malloc(sizeof *r);
     memset(r, 0, sizeof *r);
     lv_obj_set_user_data(s, r);
-    lv_obj_set_pos(label(s, &eg_sora_20_bold, EG_MINT, "Leaderboard"), 24, 20);
-    r->you = label(s, &eg_sora_16, EG_FG_HAZE, "");
-    lv_obj_align(r->you, LV_ALIGN_TOP_RIGHT, -24, 23);
+    lv_obj_t *hdr = eg_header(s, "Leaderboard", EG_MINT, NULL, NULL, NULL);
+    r->you = label(hdr, &eg_sora_20_bold, EG_FG, "");
+    lv_obj_align(r->you, LV_ALIGN_RIGHT_MID, -24, 0);
     r->list = lv_obj_create(s);
     lv_obj_set_size(r->list, 752, 352);
-    lv_obj_set_pos(r->list, 24, 56);
+    lv_obj_set_pos(r->list, 24, 60);
     lv_obj_set_flex_flow(r->list, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_style_bg_opa(r->list, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(r->list, 0, 0);
     lv_obj_set_style_pad_all(r->list, 0, 0);
     lv_obj_set_style_pad_row(r->list, 6, 0);
     r->status = label(s, &eg_sora_16, EG_FG_MIST, "Loading...");
-    lv_obj_set_pos(r->status, 24, 64);
+    lv_obj_set_pos(r->status, 24, 68);
     add_nav(s, 2);
     return s;
 }
@@ -1495,7 +1600,7 @@ void eg_rank_set(lv_obj_t *screen, const eg_rank_t *d, const char *error)
     if (error) { lv_label_set_text(r->status, error); return; }
     lv_label_set_text(r->status, d->n ? "" : "No ranked players yet.");
     if (d->you_rank > 0) lv_label_set_text_fmt(r->you, "You: #%d  ·  %d", d->you_rank, d->you_elo);
-    else lv_label_set_text(r->you, "You: unranked until your first finished game");
+    else lv_label_set_text(r->you, "Unranked until your first finished game");
     lv_obj_clean(r->list);
     for (int i = 0; i < d->n; i++) {
         lv_obj_t *row = lv_obj_create(r->list);
@@ -1514,7 +1619,7 @@ void eg_rank_set(lv_obj_t *screen, const eg_rank_t *d, const char *error)
         lv_label_set_long_mode(nm, LV_LABEL_LONG_DOT);
         lv_obj_set_width(nm, 520);
         lv_obj_align(nm, LV_ALIGN_LEFT_MID, 56, 0);
-        lv_obj_t *el = label(row, &eg_sora_20_bold, EG_CYAN, "");
+        lv_obj_t *el = label(row, &eg_sora_20_bold, EG_MINT, "");
         lv_label_set_text_fmt(el, "%d", d->rows[i].elo);
         lv_obj_align(el, LV_ALIGN_RIGHT_MID, 0, 0);
     }
@@ -1522,16 +1627,111 @@ void eg_rank_set(lv_obj_t *screen, const eg_rank_t *d, const char *error)
 
 /* ---------- You tab ---------- */
 
-typedef struct { void (*forget)(void); lv_obj_t *name, *elo; uint32_t armed; } you_t;
+#define EG_SITE "https://endgam.es"
+
+typedef struct {
+    void (*forget)(void);
+    lv_obj_t *avatar, *initial, *name, *elo, *st_games, *st_rec, *st_rate, *out_lbl, *out_note;
+    lv_obj_t *qr_panel, *qr_title, *qr, *qr_url, *qr_note;
+    uint32_t armed, ver_taps, ver_tap_at;
+} you_t;
 
 static void you_forget_cb(lv_event_t *e)
 {
     you_t *y = lv_event_get_user_data(e);
-    lv_obj_t *btn = lv_event_get_current_target(e);
     uint32_t now = lv_tick_get();
     if (y->armed && now - y->armed < 3000) { y->armed = 0; if (y->forget) y->forget(); return; }
     y->armed = now;
-    lv_label_set_text(lv_obj_get_child(btn, 0), "Tap again to unpair");
+    lv_label_set_text(y->out_lbl, "Tap again to sign out");
+    lv_obj_remove_flag(y->out_note, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* QR panel: About, Privacy, Terms, Edit profile all open on your phone. */
+static void you_qr_close_cb(lv_event_t *e) { you_t *y = lv_event_get_user_data(e); lv_obj_add_flag(y->qr_panel, LV_OBJ_FLAG_HIDDEN); }
+static void you_open_qr(you_t *y, const char *title, const char *url, const char *note)
+{
+    lv_label_set_text(lv_obj_get_child(lv_obj_get_child(y->qr_panel, 0), 1), title);
+    lv_qrcode_update(y->qr, url, strlen(url));
+    lv_label_set_text(y->qr_url, url + 8);                /* drop https:// */
+    lv_label_set_text(y->qr_note, note);
+    lv_obj_remove_flag(y->qr_panel, LV_OBJ_FLAG_HIDDEN);
+}
+static void you_link_cb(lv_event_t *e)
+{
+    you_t *y = lv_obj_get_user_data(lv_event_get_current_target(e));
+    switch ((int)(intptr_t)lv_event_get_user_data(e)) {
+    case 0: you_open_qr(y, "Edit profile", EG_SITE, "Sign in, then open You to change your name and picture."); break;
+    case 1: you_open_qr(y, "About", "https://github.com/renaobrien/endgames-board", "Endgames is chess with piece sets you make.\nThis console is open hardware: the build guide,\ncase and firmware are on GitHub."); break;
+    case 2: you_open_qr(y, "Privacy", EG_SITE "/privacy.html", "How Endgames handles your data."); break;
+    case 3: you_open_qr(y, "Terms", EG_SITE "/terms.html", "The terms for using Endgames."); break;
+    }
+}
+
+/* Five taps on the version line: a 1 px border test pattern for checking the picture is centered. */
+static void pattern_close_cb(lv_event_t *e) { lv_obj_delete(lv_event_get_current_target(e)); }
+static void edge(lv_obj_t *p, int x, int y, int w, int h, lv_color_t c)
+{
+    lv_obj_t *o = lv_obj_create(p);
+    lv_obj_remove_flag(o, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(o, w, h);
+    lv_obj_set_pos(o, x, y);
+    lv_obj_set_style_bg_color(o, c, 0);
+    lv_obj_set_style_border_width(o, 0, 0);
+    lv_obj_set_style_radius(o, 0, 0);
+    lv_obj_set_style_pad_all(o, 0, 0);
+}
+void eg_test_pattern(void)
+{
+    lv_obj_t *t = lv_obj_create(lv_layer_top());
+    lv_obj_remove_flag(t, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_add_flag(t, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(t, 800, 480);
+    lv_obj_set_pos(t, 0, 0);
+    lv_obj_set_style_bg_color(t, lv_color_black(), 0);
+    lv_obj_set_style_border_width(t, 0, 0);
+    lv_obj_set_style_radius(t, 0, 0);
+    lv_obj_set_style_pad_all(t, 0, 0);
+    edge(t, 0, 0, 800, 1, EG_MAGENTA);       /* top */
+    edge(t, 0, 479, 800, 1, EG_MINT);        /* bottom */
+    edge(t, 0, 0, 1, 480, EG_CYAN);          /* left */
+    edge(t, 799, 0, 1, 480, EG_YELLOW);      /* right */
+    edge(t, 399, 220, 2, 40, lv_color_white());
+    edge(t, 380, 239, 40, 2, lv_color_white());
+    lv_obj_t *l = label(t, &eg_sora_16, EG_FG, "Every edge should show a 1 px line: pink top, mint bottom,\ncyan left, yellow right. Photograph it, then tap to close.");
+    lv_obj_set_style_text_align(l, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_align(l, LV_ALIGN_CENTER, 0, 70);
+    lv_obj_add_event_cb(t, pattern_close_cb, LV_EVENT_CLICKED, NULL);
+}
+static void you_ver_cb(lv_event_t *e)
+{
+    you_t *y = lv_event_get_user_data(e);
+    uint32_t now = lv_tick_get();
+    y->ver_taps = (now - y->ver_tap_at < 800) ? y->ver_taps + 1 : 1;
+    y->ver_tap_at = now;
+    if (y->ver_taps >= 5) { y->ver_taps = 0; eg_test_pattern(); }
+}
+
+static lv_obj_t *stat_tile(lv_obj_t *s, int x, const char *caption, lv_color_t c, lv_obj_t **value)
+{
+    lv_obj_t *t = lv_obj_create(s);
+    lv_obj_remove_flag(t, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(t, 148, 96);
+    lv_obj_set_pos(t, x, 172);
+    lv_obj_set_style_bg_color(t, EG_SURFACE, 0);
+    lv_obj_set_style_border_width(t, 0, 0);
+    lv_obj_set_style_radius(t, 14, 0);
+    lv_obj_set_style_pad_all(t, 10, 0);
+    lv_obj_set_pos(label(t, &eg_sora_16, EG_FG_HAZE, caption), 0, 0);
+    *value = label(t, &eg_vt323_36, c, "-");
+    lv_obj_set_pos(*value, 0, 30);
+    return t;
+}
+
+static lv_obj_t *you_button(lv_obj_t *s, const char *text, int y, lv_color_t fg)
+{
+    lv_obj_t *b = pill(s, text, EG_SURFACE, 536, y, 240, 48);
+    lv_obj_set_style_text_color(lv_obj_get_child(b, 0), fg, 0);
+    return b;
 }
 
 lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *version)
@@ -1541,28 +1741,201 @@ lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *v
     memset(y, 0, sizeof *y);
     y->forget = on_forget;
     lv_obj_set_user_data(s, y);
-    y->name = label(s, &eg_bungee_28, EG_PINK, "");
-    lv_obj_set_pos(y->name, 40, 40);
-    y->elo = label(s, &eg_sora_20, EG_FG_HAZE, "");
-    lv_obj_set_pos(y->elo, 40, 86);
+    eg_header(s, "You", EG_PINK, NULL, NULL, NULL);
 
-    lv_obj_t *wb = pill(s, "Change Wi-Fi", EG_SURFACE, 40, 150, 260, 60);
-    lv_obj_add_event_cb(wb, wifi_btn_cb, LV_EVENT_CLICKED, NULL);
-    lv_obj_t *fb = pill(s, "Forget this console", EG_SURFACE, 40, 226, 260, 60);
-    lv_obj_set_style_text_color(lv_obj_get_child(fb, 0), EG_PINK_SOFT, 0);
-    lv_obj_add_event_cb(fb, you_forget_cb, LV_EVENT_CLICKED, y);
+    /* who you are */
+    y->avatar = lv_obj_create(s);
+    lv_obj_remove_flag(y->avatar, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(y->avatar, 84, 84);
+    lv_obj_set_pos(y->avatar, 24, 68);
+    lv_obj_set_style_radius(y->avatar, LV_RADIUS_CIRCLE, 0);
+    lv_obj_set_style_bg_color(y->avatar, EG_BG_MIST, 0);
+    lv_obj_set_style_border_width(y->avatar, 3, 0);
+    lv_obj_set_style_border_color(y->avatar, EG_PINK, 0);
+    lv_obj_set_style_pad_all(y->avatar, 0, 0);
+    y->initial = label(y->avatar, &eg_bungee_44, EG_FG, "");
+    lv_obj_center(y->initial);
+    y->name = label(s, &eg_bungee_28, EG_PINK, "");
+    lv_label_set_long_mode(y->name, LV_LABEL_LONG_DOT);
+    lv_obj_set_width(y->name, 380);
+    lv_obj_set_pos(y->name, 124, 76);
+    y->elo = label(s, &eg_sora_20, EG_FG_HAZE, "");
+    lv_obj_set_pos(y->elo, 124, 116);
+
+    /* record */
+    stat_tile(s, 24, "Games", EG_CYAN, &y->st_games);
+    stat_tile(s, 184, "Won, lost, drawn", EG_FG, &y->st_rec);
+    stat_tile(s, 344, "Win rate", EG_MINT, &y->st_rate);
 
     lv_obj_t *v = label(s, &eg_sora_16, EG_FG_MIST, "");
-    lv_label_set_text_fmt(v, "Firmware %s (auto update)", version);
-    lv_obj_set_pos(v, 40, 330);
+    lv_label_set_text_fmt(v, "Firmware %s, updates itself", version);
+    lv_obj_set_pos(v, 24, 380);
+    lv_obj_add_flag(v, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_ext_click_area(v, 12);
+    lv_obj_add_event_cb(v, you_ver_cb, LV_EVENT_CLICKED, y);
+
+    /* settings */
+    static const char *links[4] = {"Edit profile", "About", "Privacy", "Terms"};
+    for (int i = 0; i < 4; i++) {
+        lv_obj_t *b = you_button(s, links[i], 62 + i * 56, EG_FG);
+        lv_obj_set_user_data(b, y);
+        lv_obj_add_event_cb(b, you_link_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+    lv_obj_add_event_cb(you_button(s, "Change Wi-Fi", 62 + 4 * 56, EG_FG), wifi_btn_cb, LV_EVENT_CLICKED, NULL);
+    lv_obj_t *out = you_button(s, "Sign out", 62 + 5 * 56, EG_PINK_SOFT);
+    y->out_lbl = lv_obj_get_child(out, 0);
+    lv_obj_add_event_cb(out, you_forget_cb, LV_EVENT_CLICKED, y);
+    y->out_note = label(s, &eg_sora_16, EG_PINK_SOFT, "Signs this console out. Pair it again to play.");
+    lv_obj_align_to(y->out_note, out, LV_ALIGN_OUT_LEFT_MID, -16, 0);
+    lv_obj_add_flag(y->out_note, LV_OBJ_FLAG_HIDDEN);
     add_nav(s, 3);
+
+    /* QR panel, over everything including the tabs */
+    y->qr_panel = base(s);
+    lv_obj_add_flag(y->qr_panel, LV_OBJ_FLAG_HIDDEN);
+    eg_header(y->qr_panel, "", EG_PINK, you_qr_close_cb, y, NULL);
+    lv_obj_t *tile = lv_obj_create(y->qr_panel);
+    lv_obj_remove_flag(tile, LV_OBJ_FLAG_SCROLLABLE);
+    lv_obj_set_size(tile, 300, 300);
+    lv_obj_set_pos(tile, 60, 90);
+    lv_obj_set_style_bg_color(tile, lv_color_white(), 0);
+    lv_obj_set_style_border_width(tile, 0, 0);
+    lv_obj_set_style_radius(tile, 16, 0);
+    lv_obj_set_style_pad_all(tile, 0, 0);
+    y->qr = lv_qrcode_create(tile);
+    lv_qrcode_set_size(y->qr, 260);
+    lv_qrcode_set_dark_color(y->qr, EG_BG_VOID);
+    lv_qrcode_set_light_color(y->qr, lv_color_white());
+    lv_obj_center(y->qr);
+    lv_obj_set_pos(label(y->qr_panel, &eg_sora_20_bold, EG_FG, "Scan to open it on your phone."), 400, 130);
+    y->qr_url = label(y->qr_panel, &eg_sora_16, EG_CYAN, "");
+    lv_obj_set_pos(y->qr_url, 400, 168);
+    y->qr_note = label(y->qr_panel, &eg_sora_16, EG_FG_HAZE, "");
+    lv_label_set_long_mode(y->qr_note, LV_LABEL_LONG_WRAP);
+    lv_obj_set_width(y->qr_note, 370);
+    lv_obj_set_pos(y->qr_note, 400, 210);
     return s;
 }
 
 void eg_you_set(lv_obj_t *screen, const eg_home_t *h)
 {
     you_t *y = lv_obj_get_user_data(screen);
-    lv_label_set_text(y->name, h->name[0] ? h->name : "");
+    const char *nm = h->name[0] ? h->name : "Player";
+    char ini[2] = {(char)((nm[0] >= 'a' && nm[0] <= 'z') ? nm[0] - 32 : nm[0]), 0};
+    lv_label_set_text(y->initial, ini);
+    lv_label_set_text(y->name, nm);
     if (h->elo >= 0) lv_label_set_text_fmt(y->elo, "Rating %d", h->elo);
     else lv_label_set_text(y->elo, "Unranked until your first finished game");
+    int games = h->wins + h->losses + h->draws;
+    lv_label_set_text_fmt(y->st_games, "%d", games);
+    lv_label_set_text_fmt(y->st_rec, "%d-%d-%d", h->wins, h->losses, h->draws);
+    if (h->win_rate >= 0) lv_label_set_text_fmt(y->st_rate, "%d%%", h->win_rate);
+    else lv_label_set_text(y->st_rate, "-");
+    y->armed = 0;
+    lv_label_set_text(y->out_lbl, "Sign out");
+    lv_obj_add_flag(y->out_note, LV_OBJ_FLAG_HIDDEN);
+}
+
+/* ---------- boot screen: pixel queen spinning like a coin ---------- */
+
+static const char *QUEEN[20] = {
+    ".......YY.......",
+    "..Y....YY....Y..",
+    ".YYY..YYYY..YYY.",
+    ".YYY.YYYYYY.YYY.",
+    "..YYYYYYYYYYYY..",
+    "..YYCYYCYYCYYY..",
+    "...YYYYYYYYYY...",
+    "....WPPPPPPP....",
+    ".....WPPPPP.....",
+    "......WPPP......",
+    "......WPPP......",
+    ".....WPPPPD.....",
+    ".....WPPPPD.....",
+    "....WPPPPPPD....",
+    "....WPPPPPPD....",
+    "...WPPPPPPPPD...",
+    "..CCCCCCCCCCCC..",
+    "..CCCCCCCCCCCC..",
+    ".WPPPPPPPPPPPPD.",
+    ".PPPPPPPPPPPPPD.",
+};
+#define QW 16
+#define QH 20
+#define QSCALE 7
+
+static uint32_t queen_px[QW * QH];
+static lv_image_dsc_t queen_dsc;
+
+static uint32_t argb(lv_color_t c) { return 0xFF000000u | ((uint32_t)c.red << 16) | ((uint32_t)c.green << 8) | c.blue; }
+
+static const lv_image_dsc_t *queen_image(void)
+{
+    if (queen_dsc.data) return &queen_dsc;
+    for (int y = 0; y < QH; y++)
+        for (int x = 0; x < QW; x++) {
+            uint32_t v = 0;
+            switch (QUEEN[y][x]) {
+            case 'Y': v = argb(EG_YELLOW); break;
+            case 'P': v = argb(EG_PINK); break;
+            case 'D': v = argb(EG_MAGENTA); break;
+            case 'W': v = argb(EG_PINK_SOFT); break;
+            case 'C': v = argb(EG_CYAN); break;
+            }
+            queen_px[y * QW + x] = v;
+        }
+    queen_dsc.header.magic = LV_IMAGE_HEADER_MAGIC;
+    queen_dsc.header.cf = LV_COLOR_FORMAT_ARGB8888;
+    queen_dsc.header.w = QW;
+    queen_dsc.header.h = QH;
+    queen_dsc.header.stride = QW * 4;
+    queen_dsc.data = (const uint8_t *)queen_px;
+    queen_dsc.data_size = sizeof queen_px;
+    return &queen_dsc;
+}
+
+/* The turn: width follows |cos|, so the queen spins on the spot and stays crisp (no smoothing). */
+static void spin_cb(void *o, int32_t v)
+{
+    int32_t c = lv_trigo_cos((int16_t)(v % 360));          /* -32767..32767 */
+    if (c < 0) c = -c;
+    int32_t sx = 256 * QSCALE * c / 32767;
+    if (sx < 200) sx = 200;                                 /* never vanishes edge-on */
+    lv_image_set_scale_x(o, (uint32_t)sx);
+}
+
+lv_obj_t *eg_boot_create(lv_obj_t *parent)
+{
+    lv_obj_t *s = base(parent);
+    lv_obj_set_style_bg_color(s, EG_BG_VOID, 0);
+    lv_obj_t *q = lv_image_create(s);
+    lv_image_set_src(q, queen_image());
+    lv_image_set_antialias(q, false);
+    lv_image_set_pivot(q, QW / 2, QH / 2);
+    lv_image_set_scale(q, 256 * QSCALE);
+    lv_obj_set_size(q, QW, QH);
+    lv_obj_align(q, LV_ALIGN_CENTER, 0, -40);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, q);
+    lv_anim_set_exec_cb(&a, spin_cb);
+    lv_anim_set_values(&a, 0, 360);
+    lv_anim_set_duration(&a, 1600);
+    lv_anim_set_repeat_count(&a, LV_ANIM_REPEAT_INFINITE);
+    lv_anim_start(&a);
+
+    lv_obj_t *t = label(s, &eg_bungee_44, EG_PINK, "ENDGAMES");
+    lv_obj_set_style_text_letter_space(t, 4, 0);
+    lv_obj_align(t, LV_ALIGN_CENTER, 0, 110);
+    lv_obj_t *st = label(s, &eg_sora_16, EG_FG_MIST, "Starting...");
+    lv_obj_align(st, LV_ALIGN_CENTER, 0, 160);
+    lv_obj_set_user_data(s, st);
+    return s;
+}
+
+void eg_boot_set_status(lv_obj_t *screen, const char *msg)
+{
+    lv_obj_t *st = lv_obj_get_user_data(screen);
+    lv_label_set_text(st, msg ? msg : "");
+    lv_obj_align(st, LV_ALIGN_CENTER, 0, 160);
 }

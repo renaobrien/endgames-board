@@ -2,6 +2,11 @@
 #pragma once
 #include "lvgl.h"
 
+/* Slim header on every screen: optional Back on the left, title in the accent color. */
+#define EG_HDR_H 50
+lv_obj_t *eg_header(lv_obj_t *screen, const char *title, lv_color_t accent, lv_event_cb_t back_cb, void *ud, lv_obj_t **back_out);
+void eg_header_back_text(lv_obj_t *back, const char *text);
+
 /* Wi-Fi setup: list of nearby networks (tap to pick), name and password fields, on-screen keyboard,
  * Connect and Scan again. on_connect gets the credentials (the caller stores them in NVS);
  * on_rescan asks the caller to scan again and call eg_wifi_set_networks. */
@@ -45,13 +50,14 @@ void eg_home_set_status(lv_obj_t *screen, const char *msg);  /* NULL clears */
 lv_obj_t *eg_ai_setup_create(lv_obj_t *parent, void (*on_start)(const char *difficulty, const char *color), void (*on_back)(void));
 void eg_ai_setup_set_status(lv_obj_t *screen, const char *msg);
 
-/* Challenge a friend: QR of the challenge link. */
+/* Send a link: QR of the challenge link. Opened from Challenge a player; Back returns there. */
 lv_obj_t *eg_challenge_create(lv_obj_t *parent, void (*on_back)(void));
 void eg_challenge_set(lv_obj_t *screen, const char *url, const char *status);   /* url NULL hides the QR */
-void eg_challenge_set_find(lv_obj_t *screen, void (*on_find)(void));          /* "Challenge a player" button */
 
-/* Quick match: "Looking for an opponent..." with Cancel. searching false shows Try again and turns Cancel into Back. */
-lv_obj_t *eg_qm_create(lv_obj_t *parent, void (*on_cancel)(void), void (*on_retry)(void));
+/* Quick match: pick a clock, then "Looking for an opponent..." with Cancel.
+ * on_join gets the time control ("" untimed). searching false shows Try again and turns Cancel into Back. */
+lv_obj_t *eg_qm_create(lv_obj_t *parent, void (*on_join)(const char *time_control), void (*on_cancel)(void), void (*on_retry)(void));
+void eg_qm_pick(lv_obj_t *screen);       /* back to the clock picker */
 void eg_qm_set(lv_obj_t *screen, const char *msg, bool searching);
 
 /* Challenge a player: search by name, pick a player, pick who goes first, send. */
@@ -67,8 +73,9 @@ void eg_find_set_results(lv_obj_t *screen, const eg_user_t *users, int n, const 
 void eg_find_set_status(lv_obj_t *screen, const char *msg, bool sent);   /* sent: hides Send, Back goes home */
 void eg_find_confirm(lv_obj_t *screen, int index);                         /* open the confirm panel for result index (preview) */
 
-/* Tabs (same as the website): 0 Play, 1 Make, 2 Sets, 3 Rank, 4 You. */
+/* Tabs (same as the website): 0 Play, 1 Sets, 2 Rank, 3 You. */
 void eg_screens_set_tab_handler(void (*on_tab)(int tab));
+void eg_screens_set_badge(bool on);      /* pink dot on Play: a challenge or your move is waiting */
 
 lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *set_id), void (*on_make)(void));
 void eg_sets_set(lv_obj_t *screen, const eg_home_t *h);
@@ -80,5 +87,10 @@ lv_obj_t *eg_rank_create(lv_obj_t *parent);
 void eg_rank_set(lv_obj_t *screen, const eg_rank_t *d, const char *error);   /* error non-NULL shows it instead */
 lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *version);
 void eg_you_set(lv_obj_t *screen, const eg_home_t *h);
+void eg_test_pattern(void);   /* 1 px edges: checks the picture is centered (5 taps on the firmware line in You) */
 
 const char *eg_difficulty_label(const char *api_value);   /* beginner -> Easy, ... */
+
+/* Boot screen: shown the moment the display is up. Pixel queen spinning, wordmark, one status line. */
+lv_obj_t *eg_boot_create(lv_obj_t *parent);
+void eg_boot_set_status(lv_obj_t *screen, const char *msg);

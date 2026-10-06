@@ -6,6 +6,7 @@
 #include "lvgl.h"
 #include "esp_lvgl_port.h"
 #include "pieces.h"
+#include <stdio.h>
 #include <string.h>
 
 static const char *TAG = "eg_pieces";
@@ -134,15 +135,30 @@ const void *eg_thumb_find(const char *url)
     return NULL;
 }
 
+/* URLs that didn't download or decode: shown as "Pieces missing", not retried until restart. */
+#define FAILED_MAX 40
+static char failed[FAILED_MAX][160];
+static int failed_n;
+
+bool eg_thumb_failed(const char *url)
+{
+    if (!url || !url[0]) return true;
+    for (int i = 0; i < failed_n; i++) if (strcmp(failed[i], url) == 0) return true;
+    return false;
+}
+
 const void *eg_thumb_load(const char *url)
 {
     const void *have = eg_thumb_find(url);
-    if (have || !url || !url[0] || thumbs_n >= THUMB_MAX) return have;
+    if (have || !url || !url[0] || thumbs_n >= THUMB_MAX || eg_thumb_failed(url)) return have;
     size_t len = 0;
     void *png = eg_http_download(url, &len);
     uint8_t *px = png ? decode_scaled(png, len) : NULL;
     heap_caps_free(png);
-    if (!px) return NULL;
+    if (!px) {
+        if (failed_n < FAILED_MAX) snprintf(failed[failed_n++], sizeof failed[0], "%s", url);
+        return NULL;
+    }
     lv_image_dsc_t *d = &thumbs[thumbs_n].dsc;
     memset(d, 0, sizeof *d);
     d->header.magic = LV_IMAGE_HEADER_MAGIC;

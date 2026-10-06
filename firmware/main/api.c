@@ -273,6 +273,7 @@ eg_result_t eg_api_home(const char *token, eg_home_t *out)
 {
     memset(out, 0, sizeof *out);
     out->elo = -1;
+    out->win_rate = -1;
     char *body = NULL;
     int st = request(HTTP_METHOD_GET, "board-home", token, NULL, &body);
     eg_result_t r = EG_ERROR;
@@ -283,6 +284,12 @@ eg_result_t eg_api_home(const char *token, eg_home_t *out)
         copy_str(out->name, sizeof out->name, cJSON_GetObjectItem(prof, "name"));
         const cJSON *elo = cJSON_GetObjectItem(prof, "elo");
         if (cJSON_IsNumber(elo) && cJSON_IsTrue(cJSON_GetObjectItem(prof, "ranked"))) out->elo = elo->valueint;
+        const cJSON *w = cJSON_GetObjectItem(prof, "wins"), *l = cJSON_GetObjectItem(prof, "losses"), *d = cJSON_GetObjectItem(prof, "draws");
+        const cJSON *wr = cJSON_GetObjectItem(prof, "winRate");
+        out->wins = cJSON_IsNumber(w) ? w->valueint : 0;
+        out->losses = cJSON_IsNumber(l) ? l->valueint : 0;
+        out->draws = cJSON_IsNumber(d) ? d->valueint : 0;
+        out->win_rate = cJSON_IsNumber(wr) ? wr->valueint : -1;
         const cJSON *g;
         cJSON_ArrayForEach(g, cJSON_GetObjectItem(j, "games")) {
             if (out->n_games >= EG_HOME_MAX_GAMES) break;
@@ -418,13 +425,15 @@ eg_result_t eg_api_leaderboard(const char *token, eg_rank_t *out)
 
 /* ---------- people: quick match and direct challenges ---------- */
 
-eg_result_t eg_api_quick_match(const char *token, const char *action, eg_qm_status_t *status, eg_game_t *game)
+eg_result_t eg_api_quick_match(const char *token, const char *action, const char *time_control, eg_qm_status_t *status, eg_game_t *game)
 {
     char *body = NULL;
     int st;
     if (action) {
-        char req[40];
-        snprintf(req, sizeof req, "{\"action\":\"%s\"}", action);
+        char req[80];
+        if (time_control && strcmp(action, "join") == 0)
+            snprintf(req, sizeof req, "{\"action\":\"join\",\"timeControl\":\"%.7s\"}", time_control[0] ? time_control : "untimed");
+        else snprintf(req, sizeof req, "{\"action\":\"%s\"}", action);
         st = request(HTTP_METHOD_POST, "board-quick-match", token, req, &body);
     } else {
         st = request(HTTP_METHOD_GET, "board-quick-match", token, NULL, &body);

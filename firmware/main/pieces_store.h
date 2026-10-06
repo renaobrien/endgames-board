@@ -10,3 +10,4 @@ bool eg_pieces_load(const char *token, bool *changed);
  * eg_thumb_load downloads (network task only); eg_thumb_find never does (safe from the UI task). */
 const void *eg_thumb_load(const char *url);
 const void *eg_thumb_find(const char *url);
+bool eg_thumb_failed(const char *url);     /* empty URL, or a download that failed: the set's images are gone */

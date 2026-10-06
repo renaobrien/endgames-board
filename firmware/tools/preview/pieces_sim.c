@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* Desktop piece source: reads the 12 PNGs written by `npm run board:preview-pieces`. */
+#include <stdbool.h>
 #include "pieces.h"
 #include <stdio.h>
 
@@ -17,5 +18,6 @@ const void *eg_piece_src(char color, char type)
 }
 
 /* Sets-tab previews: the sample pieces stand in for every set. */
-const void *eg_thumb_find(const char *url) { return url && url[0] ? eg_piece_src('w', url[1]) : 0; }
+const void *eg_thumb_find(const char *url) { return url && url[0] && url[1] ? eg_piece_src('w', url[1]) : 0; }
 const void *eg_thumb_load(const char *url) { return eg_thumb_find(url); }
+bool eg_thumb_failed(const char *url) { return !url || !url[0] || url[0] == 'x'; }
