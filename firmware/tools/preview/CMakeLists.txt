@@ -15,7 +15,11 @@ set(MAIN ${CMAKE_CURRENT_SOURCE_DIR}/../../main)
 file(GLOB FONTS ${MAIN}/fonts/*.c)
 add_executable(preview
   preview.c pieces_sim.c
-  ${MAIN}/ui_game.c ${MAIN}/ui_screens.c ${MAIN}/chess_pos.c ${FONTS})
+  ${MAIN}/ui_game.c ${MAIN}/ui_screens.c ${MAIN}/chess_pos.c ${MAIN}/theme_rt.c ${FONTS})
 target_include_directories(preview PRIVATE ${MAIN})
 target_compile_definitions(preview PRIVATE LV_CONF_INCLUDE_SIMPLE EG_SET_EDIT=1)
 target_link_libraries(preview PRIVATE lvgl)
+option(EG_PREVIEW_MONO "Render with the mock Mono tokens" OFF)
+if(EG_PREVIEW_MONO)
+  set_source_files_properties(${MAIN}/theme_rt.c PROPERTIES COMPILE_OPTIONS "-include;${CMAKE_CURRENT_SOURCE_DIR}/mono_mock.h")
+endif()

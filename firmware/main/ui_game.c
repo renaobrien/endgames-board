@@ -6,7 +6,7 @@
 #include "ui_game.h"
 #include "fonts.h"
 #include "pieces.h"
-#include "theme.h"
+#include "theme_rt.h"
 #include "ui_screens.h"
 #include "pieces_store.h"
 #include <ctype.h>
@@ -33,7 +33,7 @@ typedef struct {
     lv_obj_t *avatar, *avatar_txt, *opp_name, *opp_sub, *opp_caps, *you_caps, *status, *last, *you_card;
     lv_obj_t *btn_back, *btn_menu, *you_name, *you_sub, *opp_img, *you_img, *you_txt;
     char you_pfp[160];
-    lv_obj_t *promo, *menu, *drawer_list;
+    lv_obj_t *promo, *menu, *drawer_list, *result;
     bool sent;               /* our move is on its way; board already shows it */
     /* clocks (timed games) */
     lv_obj_t *clk_you, *clk_opp;
@@ -616,6 +616,7 @@ static lv_obj_t *mk_button(lv_obj_t *p, const char *icon, const char *txt, lv_co
     lv_obj_t *l = mk_label(b, &eg_sora_20_bold, EG_FG, txt);
     if (icon) lv_obj_align(l, LV_ALIGN_LEFT_MID, tx, 0);
     else lv_obj_center(l);
+    eg_press_fx(b);
     return b;
 }
 
@@ -791,10 +792,98 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
     return scr;
 }
 
+/* ---------- game over: a result card that pops in, confetti when you win ---------- */
+
+static void confetti_done(lv_anim_t *a) { lv_obj_delete(a->var); }
+static void confetti_y(void *o, int32_t v) { lv_obj_set_y(o, v); }
+static void confetti_x(void *o, int32_t v) { lv_obj_set_style_translate_x(o, v, 0); }
+
+static void confetti(lv_obj_t *screen)
+{
+    const lv_color_t cols[4] = {EG_CYAN, EG_PINK, EG_YELLOW, EG_MINT};
+    uint32_t seed = lv_tick_get() | 1;
+    for (int i = 0; i < 36; i++) {
+        seed = seed * 1103515245u + 12345u;
+        int x = 16 + (int)((seed >> 8) % 448), d = (int)((seed >> 4) % 700), sz = 6 + (int)((seed >> 20) % 6);
+        lv_obj_t *c = lv_obj_create(screen);
+        plain(c);
+        lv_obj_remove_flag(c, LV_OBJ_FLAG_CLICKABLE);
+        lv_obj_set_size(c, sz, sz);
+        lv_obj_set_pos(c, x, -16);
+        lv_obj_set_style_bg_color(c, cols[i % 4], 0);
+        lv_obj_set_style_bg_opa(c, LV_OPA_COVER, 0);
+        lv_anim_t a;
+        lv_anim_init(&a);
+        lv_anim_set_var(&a, c);
+        lv_anim_set_exec_cb(&a, confetti_y);
+        lv_anim_set_values(&a, -16, 492);
+        lv_anim_set_duration(&a, 1400 + (seed >> 12) % 900);
+        lv_anim_set_delay(&a, d);
+        lv_anim_set_path_cb(&a, lv_anim_path_ease_in);
+        lv_anim_set_completed_cb(&a, confetti_done);
+        lv_anim_start(&a);
+        lv_anim_t w;                                  /* a little side-to-side flutter */
+        lv_anim_init(&w);
+        lv_anim_set_var(&w, c);
+        lv_anim_set_exec_cb(&w, confetti_x);
+        lv_anim_set_values(&w, -10, 10);
+        lv_anim_set_duration(&w, 300 + (seed >> 16) % 200);
+        lv_anim_set_playback_duration(&w, 300 + (seed >> 16) % 200);
+        lv_anim_set_repeat_count(&w, 4);
+        lv_anim_set_delay(&w, d);
+        lv_anim_start(&w);
+    }
+}
+
+static void result_close_cb(lv_event_t *e) { ui_t *u = U(lv_event_get_user_data(e)); close_overlay(&u->result); }
+static void pop_scale(void *o, int32_t v) { lv_obj_set_style_transform_scale(o, v, 0); }
+
+static void show_result(lv_obj_t *screen, ui_t *u)
+{
+    close_overlay(&u->result);
+    bool won0 = strcmp(u->g.status, "DRAW") && strcmp(u->g.status, "ABANDONED") && ((strcmp(u->g.status, "WHITE_WON") == 0) == u->g.you_white);
+    if (won0) confetti(screen);                 /* under the card */
+    bool draw = strcmp(u->g.status, "DRAW") == 0, gone = strcmp(u->g.status, "ABANDONED") == 0;
+    bool won = !draw && !gone && ((strcmp(u->g.status, "WHITE_WON") == 0) == u->g.you_white);
+    bool on_time = strcmp(u->g.end_reason, "timeout") == 0;
+    lv_color_t acc = won ? EG_MINT : draw || gone ? EG_CYAN : EG_PINK;
+    u->result = lv_obj_create(screen);
+    plain(u->result);
+    lv_obj_add_flag(u->result, LV_OBJ_FLAG_CLICKABLE);
+    lv_obj_set_size(u->result, 360, 210);
+    lv_obj_set_pos(u->result, BOARD_X + (BOARD - 360) / 2, BOARD_Y + (BOARD - 210) / 2);
+    lv_obj_set_style_bg_color(u->result, EG_BG_VOID, 0);
+    lv_obj_set_style_bg_opa(u->result, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(u->result, 20, 0);
+    lv_obj_set_style_border_width(u->result, 4, 0);
+    lv_obj_set_style_border_color(u->result, acc, 0);
+    lv_obj_set_style_shadow_width(u->result, 0, 0);
+    lv_obj_t *t = mk_label(u->result, &eg_bungee_44, acc, gone ? "OVER" : draw ? "DRAW" : won ? "YOU WON" : "YOU LOST");
+    lv_obj_align(t, LV_ALIGN_TOP_MID, 0, 26);
+    lv_obj_t *sub = mk_label(u->result, &eg_sora_20, EG_FG_HAZE, gone ? "Game abandoned" : on_time ? "on time" :
+                             draw ? "Nobody wins this one" : won ? "Nice game" : "Run it back");
+    lv_obj_align(sub, LV_ALIGN_TOP_MID, 0, 90);
+    lv_obj_t *ok = mk_button(u->result, NULL, "Close", acc, 0, 0, 160);
+    lv_obj_align(ok, LV_ALIGN_BOTTOM_MID, 0, -20);
+    lv_obj_add_event_cb(ok, result_close_cb, LV_EVENT_CLICKED, screen);
+    lv_obj_add_event_cb(u->result, result_close_cb, LV_EVENT_CLICKED, screen);
+    lv_obj_set_style_transform_pivot_x(u->result, 180, 0);
+    lv_obj_set_style_transform_pivot_y(u->result, 105, 0);
+    lv_anim_t a;
+    lv_anim_init(&a);
+    lv_anim_set_var(&a, u->result);
+    lv_anim_set_exec_cb(&a, pop_scale);
+    lv_anim_set_values(&a, 96, 256);
+    lv_anim_set_duration(&a, 320);
+    lv_anim_set_path_cb(&a, lv_anim_path_overshoot);
+    lv_anim_start(&a);
+}
+
 void eg_game_set(lv_obj_t *screen, const eg_game_t *g)
 {
     ui_t *u = U(screen);
     bool new_game = strcmp(u->g.id, g->id) != 0;
+    bool just_ended = !new_game && u->g.in_progress && !g->in_progress;
     /* the opponent just moved if a new last move arrived and it's now our turn */
     bool opp_moved = !new_game && g->your_turn && g->last_to[0] &&
                      (strcmp(g->last_from, u->g.last_from) != 0 || strcmp(g->last_to, u->g.last_to) != 0 || g->move_count != u->g.move_count);
@@ -803,9 +892,12 @@ void eg_game_set(lv_obj_t *screen, const eg_game_t *g)
     u->selected = -1;
     u->sent = false;
     close_overlay(&u->promo);
-    if (new_game) close_overlay(&u->menu);
+    if (new_game) { close_overlay(&u->menu); close_overlay(&u->result); }
     redraw_board(u);
     redraw_panel(u);
     clocks_from(u, g);
     if (opp_moved) animate_last_move(u);
+    if (just_ended) show_result(screen, u);
 }
+
+void eg_game_show_result(lv_obj_t *screen) { show_result(screen, U(screen)); }   /* preview */

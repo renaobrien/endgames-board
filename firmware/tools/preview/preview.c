@@ -4,6 +4,7 @@
 #include "lvgl.h"
 #include "ui_game.h"
 #include "ui_screens.h"
+#include "theme_rt.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -61,6 +62,7 @@ static void sample(eg_game_t *g)
 int main(int argc, char **argv)
 {
     const char *out = argc > 1 ? argv[1] : "game.bmp";
+    eg_theme_init(getenv("EG_MODE") ? (eg_mode_t)atoi(getenv("EG_MODE")) : EG_MODE_DARK);
     lv_init();
     lv_display_t *d = lv_display_create(W, H);
     static uint8_t buf[W * H * 4];
@@ -122,7 +124,7 @@ int main(int argc, char **argv)
         eg_rank_set(eg_rank_create(lv_screen_active()), &r, NULL);
     } else if (strcmp(which, "you") == 0) {
         static eg_home_t h = {.name = "deltajuliet", .pfp = "x", .elo = 1240, .wins = 20, .losses = 18, .draws = 4, .win_rate = 48};
-        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.13.2"), &h);
+        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.14.0"), &h);
         if (argc > 3) eg_test_pattern();
     } else if (strcmp(which, "ai") == 0) {
         eg_ai_setup_create(lv_screen_active(), NULL, NULL);
@@ -141,6 +143,13 @@ int main(int argc, char **argv)
         }
         eg_game_set(scr, &g);
         eg_game_set_you(scr, "deltajuliet", "x");
+        if (strcmp(which, "game-won") == 0 || strcmp(which, "game-lost") == 0) {
+            g.in_progress = false;
+            strcpy(g.status, strcmp(which, "game-won") == 0 ? "WHITE_WON" : "BLACK_WON");
+            eg_game_set(scr, &g);
+            eg_game_show_result(scr);
+            for (int i = 0; i < 20; i++) { lv_tick_inc(40); lv_timer_handler(); }
+        }
     }
 
     for (int i = 0; i < 5; i++) { lv_tick_inc(50); lv_timer_handler(); }

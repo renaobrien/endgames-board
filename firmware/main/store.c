@@ -30,3 +30,10 @@ void eg_store_clear_wifi(void) { put("ssid", NULL); put("pass", NULL); }
 bool eg_store_load_token(char token[96]) { return get("token", token, 96); }
 void eg_store_save_token(const char *token) { put("token", token); }
 void eg_store_clear_token(void) { put("token", NULL); }
+
+int eg_store_load_mode(void)
+{
+    char v[4] = {0};
+    return get("mode", v, sizeof v) && v[0] >= '0' && v[0] <= '2' ? v[0] - '0' : 0;
+}
+void eg_store_save_mode(int mode) { char v[2] = {(char)('0' + mode), 0}; put("mode", v); }

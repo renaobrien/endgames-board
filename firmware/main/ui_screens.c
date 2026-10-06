@@ -2,7 +2,7 @@
 #include "ui_screens.h"
 #include "fonts.h"
 #include "pieces.h"
-#include "theme.h"
+#include "theme_rt.h"
 #include "pieces_store.h"
 #include <string.h>
 #include <stdio.h>
@@ -18,6 +18,21 @@ static lv_obj_t *base(lv_obj_t *parent)
     lv_obj_set_style_pad_all(s, 0, 0);
     lv_obj_clear_flag(s, LV_OBJ_FLAG_SCROLLABLE);
     return s;
+}
+
+
+/* Press feedback: the button sinks a little while held. Shared by every button builder. */
+void eg_press_fx(lv_obj_t *b)
+{
+    static const lv_style_prop_t props[] = {LV_STYLE_TRANSFORM_SCALE_X, LV_STYLE_TRANSFORM_SCALE_Y, 0};
+    static lv_style_transition_dsc_t tr;
+    static bool init;
+    if (!init) { lv_style_transition_dsc_init(&tr, props, lv_anim_path_ease_out, 90, 0, NULL); init = true; }
+    lv_obj_set_style_transform_pivot_x(b, LV_PCT(50), 0);
+    lv_obj_set_style_transform_pivot_y(b, LV_PCT(50), 0);
+    lv_obj_set_style_transform_scale(b, 243, LV_STATE_PRESSED);
+    lv_obj_set_style_transition(b, &tr, 0);
+    lv_obj_set_style_transition(b, &tr, LV_STATE_PRESSED);
 }
 
 static lv_obj_t *label(lv_obj_t *p, const lv_font_t *f, lv_color_t c, const char *t)
@@ -153,7 +168,7 @@ static kbd_t *kbd_create(lv_obj_t *parent, void (*on_enter)(void *, lv_obj_t *),
     lv_obj_set_style_bg_color(k->kb, EG_CYAN, LV_PART_ITEMS | LV_STATE_CHECKED);
     lv_obj_set_style_bg_color(k->kb, EG_PINK, LV_PART_ITEMS | LV_STATE_PRESSED);
     lv_obj_set_style_text_color(k->kb, EG_FG, LV_PART_ITEMS);
-    lv_obj_set_style_text_color(k->kb, EG_BG_VOID, LV_PART_ITEMS | LV_STATE_CHECKED);
+    lv_obj_set_style_text_color(k->kb, eg_on(EG_CYAN), LV_PART_ITEMS | LV_STATE_CHECKED);
     lv_obj_set_style_text_font(k->kb, &lv_font_montserrat_20, LV_PART_ITEMS);
     lv_obj_set_style_border_width(k->kb, 0, LV_PART_ITEMS);
     lv_obj_set_style_shadow_width(k->kb, 0, LV_PART_ITEMS);
@@ -293,8 +308,9 @@ static lv_obj_t *pill(lv_obj_t *p, const char *text, lv_color_t bg, int x, int y
     lv_obj_set_style_bg_color(b, bg, 0);
     lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
-    lv_obj_t *l = label(b, &eg_sora_20_bold, lv_color_white(), text);
+    lv_obj_t *l = label(b, &eg_sora_20_bold, eg_on(bg), text);
     lv_obj_center(l);
+    eg_press_fx(b);
     return b;
 }
 
@@ -332,6 +348,7 @@ lv_obj_t *eg_header(lv_obj_t *s, const char *title, lv_color_t accent, lv_event_
         lv_obj_t *t = label(b, &eg_sora_20_bold, EG_FG, "Back");
         lv_obj_align(t, LV_ALIGN_LEFT_MID, 40, 0);
         lv_obj_add_event_cb(b, back_cb, LV_EVENT_CLICKED, ud);
+        eg_press_fx(b);
         tx = 152;
     }
     lv_obj_t *t = label(bar, &eg_sora_20_bold, accent, title);
@@ -358,6 +375,7 @@ static lv_obj_t *header_action(lv_obj_t *bar, const char *text, lv_color_t bg, l
     lv_obj_t *l = label(b, &eg_sora_16, fg, text);
     lv_obj_set_style_text_font(l, &eg_sora_20_bold, 0);
     lv_obj_center(l);
+    eg_press_fx(b);
     return b;
 }
 
@@ -395,7 +413,7 @@ lv_obj_t *eg_wifi_create(lv_obj_t *parent, eg_wifi_cb_t on_connect, void (*on_re
     lv_obj_set_style_text_line_space(list, 22, 0);
     lv_obj_set_style_max_height(list, 300, 0);
     lv_obj_set_style_bg_color(list, EG_CYAN, LV_PART_SELECTED | LV_STATE_CHECKED);
-    lv_obj_set_style_text_color(list, EG_BG_VOID, LV_PART_SELECTED | LV_STATE_CHECKED);
+    lv_obj_set_style_text_color(list, eg_on(EG_CYAN), LV_PART_SELECTED | LV_STATE_CHECKED);
     lv_obj_add_event_cb(w->dd, dd_changed_cb, LV_EVENT_VALUE_CHANGED, w);
 
     lv_obj_t *rb = pill(s, "", EG_SURFACE, 348, 72, 52, 52);
@@ -617,8 +635,10 @@ static lv_obj_t *big_button(lv_obj_t *s, const char *text, lv_color_t bg, lv_col
     lv_obj_set_style_bg_color(b, bg, 0);
     lv_obj_set_style_radius(b, 18, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
-    lv_obj_t *l = label(b, &eg_sora_20_bold, fg, text);
+    (void)fg;
+    lv_obj_t *l = label(b, &eg_sora_20_bold, eg_on(bg), text);
     lv_obj_align(l, LV_ALIGN_LEFT_MID, 12, 0);
+    eg_press_fx(b);
     return b;
 }
 
@@ -733,6 +753,7 @@ static lv_obj_t *small_button(lv_obj_t *p, const char *text, lv_color_t bg, lv_c
     lv_obj_set_style_radius(b, LV_RADIUS_CIRCLE, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_center(label(b, &eg_sora_16, fg, text));
+    eg_press_fx(b);
     return b;
 }
 
@@ -811,7 +832,7 @@ void eg_home_set(lv_obj_t *screen, const eg_home_t *d)
         lv_obj_t *no = small_button(row, "Decline", EG_BG_MIST, EG_FG, 92);
         lv_obj_align(no, LV_ALIGN_RIGHT_MID, 0, 0);
         lv_obj_add_event_cb(no, home_respond_cb, LV_EVENT_CLICKED, (void *)(intptr_t)(i * 2));
-        lv_obj_t *yes = small_button(row, "Accept", EG_MINT, EG_BG_VOID, 92);
+        lv_obj_t *yes = small_button(row, "Accept", EG_MINT, eg_on(EG_MINT), 92);
         lv_obj_align(yes, LV_ALIGN_RIGHT_MID, -100, 0);
         lv_obj_add_event_cb(yes, home_respond_cb, LV_EVENT_CLICKED, (void *)(intptr_t)(i * 2 + 1));
     }
@@ -852,7 +873,7 @@ static void seg_paint(lv_obj_t **btns, int n, int sel)
 {
     for (int i = 0; i < n; i++) {
         lv_obj_set_style_bg_color(btns[i], i == sel ? EG_CYAN : EG_SURFACE, 0);
-        lv_obj_set_style_text_color(lv_obj_get_child(btns[i], 0), i == sel ? EG_BG_VOID : EG_FG, 0);
+        lv_obj_set_style_text_color(lv_obj_get_child(btns[i], 0), i == sel ? eg_on(EG_CYAN) : EG_FG, 0);
     }
 }
 
@@ -884,6 +905,7 @@ static lv_obj_t *seg_button(lv_obj_t *s, const char *text, int x, int y, int w)
     lv_obj_set_style_radius(b, 14, 0);
     lv_obj_set_style_shadow_width(b, 0, 0);
     lv_obj_center(label(b, &eg_sora_20_bold, EG_FG, text));
+    eg_press_fx(b);
     return b;
 }
 
@@ -1033,7 +1055,7 @@ lv_obj_t *eg_qm_create(lv_obj_t *parent, void (*on_join)(const char *), void (*o
     }
     seg_paint(q->tcb, 5, q->tc);
     q->go = pill(s, "Find a match", EG_CYAN, 40, 214, 280, 64);
-    lv_obj_set_style_text_color(lv_obj_get_child(q->go, 0), EG_BG_VOID, 0);
+    
     lv_obj_add_event_cb(q->go, qm_go_cb, LV_EVENT_CLICKED, q);
 
     q->msg = label(s, &eg_sora_20_bold, EG_FG, "Looking for an opponent...");
@@ -1044,7 +1066,7 @@ lv_obj_t *eg_qm_create(lv_obj_t *parent, void (*on_join)(const char *), void (*o
     lv_obj_set_pos(q->hint, 40, 310);
 
     q->retry_btn = pill(s, "Try again", EG_CYAN, 40, 200, 240, 64);
-    lv_obj_set_style_text_color(lv_obj_get_child(q->retry_btn, 0), EG_BG_VOID, 0);
+    
     lv_obj_add_event_cb(q->retry_btn, qm_retry_cb, LV_EVENT_CLICKED, q);
     qm_show_pick(q, true);
     return s;
@@ -1339,7 +1361,7 @@ lv_obj_t *eg_sets_create(lv_obj_t *parent, void (*on_pick)(const char *), void (
     lv_obj_set_user_data(s, t);
     lv_obj_t *hdr = eg_header(s, "Sets", EG_YELLOW, NULL, NULL, NULL);
     lv_obj_set_pos(label(hdr, &eg_sora_16, EG_FG_HAZE, "Tap one to play with it here and on the web."), 90, 15);
-    lv_obj_t *mk = header_action(hdr, "Make a new set", EG_YELLOW, EG_BG_VOID, 200);
+    lv_obj_t *mk = header_action(hdr, "Make a new set", EG_YELLOW, eg_on(EG_YELLOW), 200);
     lv_obj_add_event_cb(mk, sets_make_cb, LV_EVENT_CLICKED, t);
     t->list = lv_obj_create(s);
     lv_obj_set_size(t->list, 752, 348);
@@ -1481,7 +1503,7 @@ static void set_tile(sets_t *t, const eg_set_t *st, const char *name, bool activ
     if (n) { lv_obj_t *im = lv_image_create(tile); lv_image_set_src(im, n); lv_obj_align(im, LV_ALIGN_RIGHT_MID, -6, 0); }
     if (!k && !n) {                          /* not downloaded yet, or the set's images are gone */
         bool dead = !st->preview_k[0] || eg_thumb_failed(st->preview_k);
-        lv_obj_t *w = label(tile, &eg_sora_16, EG_BG_VOID, dead ? "Pieces\nmissing" : "Loading...");
+        lv_obj_t *w = label(tile, &eg_sora_16, eg_on(EG_BOARD_LIGHT), dead ? "Pieces\nmissing" : "Loading...");
         lv_obj_set_style_text_align(w, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_center(w);
     }
@@ -1631,6 +1653,8 @@ void eg_rank_set(lv_obj_t *screen, const eg_rank_t *d, const char *error)
 
 typedef struct {
     void (*forget)(void);
+    void (*mode)(int);
+    lv_obj_t *modes[3];
     lv_obj_t *avatar, *avatar_img, *initial, *name, *elo, *st[4], *out_lbl, *out_note;
     lv_obj_t *qr_panel, *qr_title, *qr, *qr_url, *qr_note;
     uint32_t armed, ver_taps, ver_tap_at;
@@ -1737,6 +1761,15 @@ static lv_obj_t *you_button(lv_obj_t *s, const char *text, int y, lv_color_t fg)
     return b;
 }
 
+static void you_mode_cb(lv_event_t *e)
+{
+    you_t *y = lv_obj_get_user_data(lv_event_get_current_target(e));
+    int m = (int)(intptr_t)lv_event_get_user_data(e);
+    if (m == (int)eg_theme_mode()) return;
+    seg_paint(y->modes, 3, m);
+    if (y->mode) y->mode(m);              /* saves it and restarts with the new colors */
+}
+
 lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *version)
 {
     lv_obj_t *s = base(parent);
@@ -1772,6 +1805,22 @@ lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *v
     static const char *caps[4] = {"Played", "Won", "Lost", "Drawn"};
     const lv_color_t cols[4] = {EG_CYAN, EG_MINT, EG_PINK_SOFT, EG_FG_HAZE};
     for (int i = 0; i < 4; i++) stat_tile(s, 24 + i * (STAT_W + 12), caps[i], cols[i], &y->st[i]);
+
+    /* display mode: only the modes this build has colors for */
+    if (eg_theme_has(EG_MODE_LIGHT) || eg_theme_has(EG_MODE_MONO)) {
+        lv_obj_set_pos(label(s, &eg_sora_16, EG_FG_HAZE, "Display"), 24, 300);
+        static const char *names[3] = {"Dark", "Light", "Mono"};
+        int x = 100;
+        for (int i = 0; i < 3; i++) {
+            y->modes[i] = seg_button(s, names[i], x, 288, 124);
+            lv_obj_set_height(y->modes[i], 44);
+            lv_obj_set_user_data(y->modes[i], y);
+            lv_obj_add_event_cb(y->modes[i], you_mode_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+            if (!eg_theme_has((eg_mode_t)i)) lv_obj_add_flag(y->modes[i], LV_OBJ_FLAG_HIDDEN);
+            else x += 136;
+        }
+        seg_paint(y->modes, 3, (int)eg_theme_mode());
+    }
 
     lv_obj_t *v = label(s, &eg_sora_16, EG_FG_MIST, "");
     lv_label_set_text_fmt(v, "Firmware %s, updates itself", version);
@@ -1821,6 +1870,12 @@ lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *v
     lv_obj_set_width(y->qr_note, 370);
     lv_obj_set_pos(y->qr_note, 400, 210);
     return s;
+}
+
+void eg_you_set_mode_handler(lv_obj_t *screen, void (*on_mode)(int mode))
+{
+    you_t *y = lv_obj_get_user_data(screen);
+    y->mode = on_mode;
 }
 
 void eg_you_set(lv_obj_t *screen, const eg_home_t *h)

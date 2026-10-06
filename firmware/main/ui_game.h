@@ -20,6 +20,7 @@ void eg_game_set(lv_obj_t *screen, const eg_game_t *g);
 
 #define EG_GAME_AVATAR_PX 40   /* opponent picture on the game screen */
 void eg_game_refresh_avatar(lv_obj_t *screen);   /* after eg_avatar_load fetched the opponent's picture */
+void eg_game_show_result(lv_obj_t *screen);   /* the game-over card (it also shows by itself when a game ends) */
 void eg_game_set_you(lv_obj_t *screen, const char *name, const char *pfp);   /* your initial and picture on your card */
 
 /* Fresh clock numbers from any response for the game on screen (call on every poll, not only on changes). */

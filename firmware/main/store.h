@@ -9,3 +9,5 @@ void eg_store_clear_wifi(void);
 bool eg_store_load_token(char token[96]);
 void eg_store_save_token(const char *token);
 void eg_store_clear_token(void);
+int eg_store_load_mode(void);              /* 0 dark, 1 light, 2 mono */
+void eg_store_save_mode(int mode);

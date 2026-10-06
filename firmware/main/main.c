@@ -12,9 +12,10 @@
 #include "nvs_flash.h"
 #include "ota.h"
 #include "fonts.h"
-#include "theme.h"
+#include "theme_rt.h"
 #include "pieces_store.h"
 #include "store.h"
+#include "esp_system.h"
 #include "ui_game.h"
 #include "ui_screens.h"
 #include <string.h>
@@ -77,6 +78,12 @@ static void on_move(const char *from, const char *to, char promo)
     /* Hand off to the network task via a small queue-free flag set: moves are rare, so use a one-slot mailbox. */
     extern void eg_net_submit_move(const char *, const char *, char);
     eg_net_submit_move(from, to, promo);
+}
+
+static void on_mode(int mode)
+{
+    eg_store_save_mode(mode);
+    esp_restart();                         /* every screen is rebuilt with the new colors */
 }
 
 static void on_forget(void)
@@ -868,6 +875,7 @@ void app_main(void)
     esp_err_t e = nvs_flash_init();
     if (e == ESP_ERR_NVS_NO_FREE_PAGES || e == ESP_ERR_NVS_NEW_VERSION_FOUND) { nvs_flash_erase(); nvs_flash_init(); }
 
+    eg_theme_init((eg_mode_t)eg_store_load_mode());   /* colors first: every screen reads them */
     if (!eg_bsp_init()) { ESP_LOGE(TAG, "display init failed"); return; }
     lvgl_port_lock(0);
     scr_boot = eg_boot_create(NULL);          /* something on screen right away */
@@ -903,6 +911,7 @@ void app_main(void)
     eg_sets_set_edit(scr_sets, on_set_rename, on_set_delete);
     scr_rank = eg_rank_create(NULL);
     scr_you = eg_you_create(NULL, on_forget, eg_ota_version());
+    eg_you_set_mode_handler(scr_you, on_mode);
     eg_game_cb_t cb = {.on_move = on_move, .on_resign = on_resign, .on_menu_home = on_menu_home, .on_clock_zero = on_clock_zero};
     scr_game = eg_game_create(NULL, &cb);
     lv_timer_create(power_tick, 500, NULL);
