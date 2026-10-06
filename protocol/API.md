@@ -65,8 +65,9 @@ Optional query: `?gameId=uuid` to fetch a specific game (any status).
     "lastMove": { "from": "e2", "to": "e4", "san": "e4" },
     "moves": ["e4"],
     "legalMoves": [],
-    "timeControl": "5+0",
-    "clock": { "incrementMs": 0, "yourMs": 241500, "opponentMs": 300000, "running": "you" },
+    "timeControl": "1d",
+    "moveDeadline": "2026-10-07T19:30:00Z",
+    "clock": null,
     "endReason": null,
     "opponent": { "name": "magnus_fan", "isAi": false, "difficulty": null, "pfpUrl": "https://.../avatar.png" },
     "updatedAt": "2026-10-03T19:30:00Z"
@@ -74,15 +75,17 @@ Optional query: `?gameId=uuid` to fetch a specific game (any status).
 }
 ```
 
-`moves` is every move so far in SAN, oldest first (up to 500), for the move list. **Clocks.** A game is timed or untimed. `timeControl` is the preset (`3+2`, `5+0`, `10+0`, `15+10`: minutes plus seconds added per move), or `null`. When it is `null`, `clock` is `null` too.
+`moves` is every move so far in SAN, oldest first (up to 500), for the move list.
 
-`clock.yourMs` and `clock.opponentMs` are the time each side has left **at the moment of the response**. The server has already subtracted the time the running clock has used. Start counting down when the response arrives, and replace your numbers on every response. `clock.running` is `"you"`, `"opponent"` or `null` (not started yet, or the game is over). `incrementMs` is added to a player's clock after each of their moves.
+**Time per move.** Games against people have one deadline per move. `timeControl` is `"1d"`, `"3d"` or `"1w"` (1 day, 3 days, 1 week per move), or `null` for a computer game. `moveDeadline` is the moment the player on the move loses on time, as an ISO 8601 UTC string. It is `null` when there is no deadline: computer games, finished games, and games started with a live clock (below). Every move resets the deadline for the player who moves next, so after your move `moveDeadline` is your opponent's, and the reverse. `yourTurn` tells you whose it is.
 
-Neither clock runs until both players have made their first move. If either first move has not happened within 2 minutes, the game ends as `ABANDONED` with no rating change.
+Show the time left in words, rounded down: `23 h left`, `2 days left`, `45 min left`; `1 day left` and `1 h left` in the singular. Count down to `moveDeadline` using the `Date` response header as "now" (or the device clock if it is set from the network): the deadline is a server time, and a day-long deadline tolerates a few minutes of skew. When 2 hours or less are left on your move, show a banner (the console has no speaker, so visual only). When the deadline passes, call `board-game` right away: the server settles the game and the response shows the result. The server gives a mover 1 second of grace for network delay.
 
-When a clock reaches zero the server ends the game: the player out of time loses, unless the other player cannot possibly checkmate, which is a draw. The board does not send anything for this. When your own countdown reaches zero, call `board-game` right away: the server settles the game and the response shows the result. The server gives a mover 1 second of grace per move for network delay.
+If a first move is missed (white never moves, or black never replies to white's first move) the game ends as `ABANDONED` with no rating change. After that, a missed deadline is a loss on time, unless the other player cannot possibly checkmate, which is a draw.
 
-`endReason` is `null` while the game is in progress. Afterwards it is one of `checkmate`, `draw` (stalemate and other draws), `resign`, `timeout`, `abandoned`. Games finished before clocks existed have `null`.
+**Live clocks (retired).** Games started before time per move existed carry a live clock and finish under their old rules: `timeControl` is one of `3+2`, `5+0`, `10+0`, `15+10`, `moveDeadline` is `null`, and `clock` is `{ "incrementMs", "yourMs", "opponentMs", "running" }`: the time each side has left at the moment of the response, with `running` set to `"you"`, `"opponent"` or `null`. Count down locally and replace the numbers on every response. No new game gets a live clock, so a firmware that only shows time per move can show nothing extra for these games, or keep its clock code until none are left.
+
+`endReason` is `null` while the game is in progress. Afterwards it is one of `checkmate`, `draw` (stalemate and other draws), `resign`, `timeout`, `abandoned`. Games finished before clocks existed have `null`. A game lost on its deadline reads `timeout`.
 
 `opponent.isAi` is true in games against the computer, with `difficulty` set (`beginner`, `intermediate`, `advanced`, `expert`; computer games started on the website before difficulty was stored read as `intermediate`). For people, `difficulty` is `null`.
 
@@ -153,10 +156,11 @@ One call for the home screen.
       "yourTurn": true,
       "status": "IN_PROGRESS",
       "moveCount": 14,
-      "timeControl": "5+0",
-      "yourMs": 241500,
-      "opponentMs": 300000,
-      "running": "you",
+      "timeControl": "1d",
+      "moveDeadline": "2026-10-05T19:30:00Z",
+      "yourMs": null,
+      "opponentMs": null,
+      "running": null,
       "updatedAt": "2026-10-04T19:30:00Z"
     }
   ],
@@ -167,7 +171,7 @@ One call for the home screen.
 }
 ```
 
-In timed games the list items carry `timeControl`, `yourMs`, `opponentMs` and `running` (same meaning as `clock` in `board-game`); they are `null` in untimed games.
+Each list item carries `timeControl` and `moveDeadline` (same meaning as in `board-game`; both `null` for a computer game). `yourMs`, `opponentMs` and `running` are set only for games started with a live clock before time per move existed (same meaning as `clock` in `board-game`) and are `null` otherwise. Show "Your turn" or "Their turn", and the time left on the move next to it.
 
 `games` holds your in-progress games (against people and the computer), your-turn first, then most recently updated, up to 20. You can have at most 20 in progress; `board-new-game` returns `429` above that. `incomingChallenges` lists direct challenges waiting for your answer (see `board-challenge-respond`). `sets` lists the built-in set plus sets you made. A set with `"missing": true` has pieces that no longer load (the images were saved with a link that expired): its `preview` is `null`, show "Pieces missing", and don't offer it as a choice (`board-set` answers `409` for it). It can still be renamed or deleted. `activeSetId` is never a missing set: if the active set's pieces are gone it reads `"default"`. Treat a missing `missing` field as `false`. `elo` is `null` and `ranked` false before the first ranked game.
 
@@ -191,7 +195,7 @@ Challenge a friend:
 { "mode": "challenge", "color": "random" }
 ```
 
-Creates an open challenge with your active set. `color` is the color you play (`random` picks one). Add `"timeControl": "5+0"` for a timed game (`3+2`, `5+0`, `10+0`, `15+10`); leave it out for untimed. Returns:
+Creates an open challenge with your active set. `color` is the color you play (`random` picks one). Add `"timeControl"`: `"1d"` (default), `"3d"` or `"1w"`, the time each player has per move. Returns:
 
 ```json
 200 { "apiVersion": 1, "challenge": { "id": "uuid", "url": "https://endgam.es/?challenge=uuid", "expiresAt": "..." } }
@@ -202,10 +206,10 @@ The board shows `url` as a QR. When someone accepts, the game appears in `board-
 Challenge a specific player (find them with `board-users`):
 
 ```json
-{ "mode": "challenge", "opponentId": "uuid", "first": "me", "timeControl": "5+0" }
+{ "mode": "challenge", "opponentId": "uuid", "first": "me", "timeControl": "3d" }
 ```
 
-`timeControl` is optional (untimed when left out). It is rejected with `400` for computer games, which are always untimed, and for any value outside the list above.
+`timeControl` is `"1d"`, `"3d"` or `"1w"`, and `"1d"` when left out. Anything else is `400`. It is also `400` for computer games, which have no deadline. For consoles on older firmware, the old values (`3+2`, `5+0`, `10+0`, `15+10`, `"untimed"`, `null`) are accepted and become `"1d"`.
 
 `first` is `me`, `computer` or `random`; here `computer` means the other player moves first. Returns:
 
@@ -235,7 +239,7 @@ Accept returns `200 { "apiVersion": 1, "game": { ... } }` in the `board-game` sh
 
 ### Quick match: `POST` and `GET /board-quick-match`
 
-Pairs you with the next waiting player. Quick match games are timed (`10+0`) unless you send `"timeControl"` with `join`: a preset (`3+2`, `5+0`, `10+0`, `15+10`), or `null` (or the string `"untimed"`) for an untimed game. Leaving the field out means `10+0`. You are only paired with a player who asked for the same control, so untimed players are paired with untimed players. Anything else is rejected with `400`.
+Pairs you with the next waiting player. Every quick match is 1 day per move, so there is nothing to pick. A `timeControl` in the body is ignored (consoles on older firmware may still send one).
 
 ```json
 POST { "action": "join" }    or    { "action": "cancel" }
