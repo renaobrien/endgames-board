@@ -30,11 +30,16 @@ const void *eg_piece_src(char color, char type)
 }
 
 #include "libs/lodepng/lodepng.h"
+#include <math.h>
 #include <stdlib.h>
 
 /* PNG -> ARGB8888 (LVGL byte order B,G,R,A) resized to EG_PIECE_PX with an alpha-weighted box filter.
  * Decoding once here keeps every board redraw a plain copy. Returns PSRAM memory or NULL. */
-static uint8_t *decode_scaled_locked(const void *png, size_t len)
+static uint8_t *decode_to(const void *png, size_t len, int N, bool circle);
+static uint8_t *decode_scaled_locked(const void *png, size_t len) { return decode_to(png, len, EG_PIECE_PX, false); }
+
+/* PNG -> ARGB8888 at N x N. circle: clear everything outside the inscribed circle, with a soft 1 px edge. */
+static uint8_t *decode_to(const void *png, size_t len, int N, bool circle)
 {
     unsigned char *rgba = NULL;
     unsigned w = 0, h = 0;
@@ -45,7 +50,6 @@ static uint8_t *decode_scaled_locked(const void *png, size_t len)
         lv_free(rgba);
         return NULL;
     }
-    const int N = EG_PIECE_PX;
     uint8_t *out = heap_caps_malloc(N * N * 4, MALLOC_CAP_SPIRAM);
     if (!out) { lv_free(rgba); return NULL; }
     for (int y = 0; y < N; y++) {
@@ -61,6 +65,12 @@ static uint8_t *decode_scaled_locked(const void *png, size_t len)
             uint8_t *o = out + (y * N + x) * 4;
             if (a) { o[0] = b / a; o[1] = g / a; o[2] = r / a; } else { o[0] = o[1] = o[2] = 0; }
             o[3] = n ? a / n : 0;
+            if (circle) {
+                float dx = x + 0.5f - N / 2.0f, dy = y + 0.5f - N / 2.0f, r = N / 2.0f;
+                float d = r - sqrtf(dx * dx + dy * dy);            /* > 0 inside */
+                if (d <= 0) o[3] = 0;
+                else if (d < 1) o[3] = (uint8_t)(o[3] * d);
+            }
         }
     }
     lv_free(rgba);
@@ -169,4 +179,48 @@ const void *eg_thumb_load(const char *url)
     d->data_size = EG_PIECE_PX * EG_PIECE_PX * 4;
     snprintf(thumbs[thumbs_n].url, sizeof thumbs[0].url, "%s", url);
     return &thumbs[thumbs_n++].dsc;
+}
+
+/* ---------- profile pictures (round, cached by URL and size) ---------- */
+
+#define AVATAR_MAX 12
+static struct { char url[160]; int size; lv_image_dsc_t dsc; bool failed; } avatars[AVATAR_MAX];
+static int avatars_n;
+
+const void *eg_avatar_find(const char *url, int size)
+{
+    if (!url || !url[0]) return NULL;
+    for (int i = 0; i < avatars_n; i++)
+        if (avatars[i].size == size && strcmp(avatars[i].url, url) == 0) return avatars[i].failed ? NULL : &avatars[i].dsc;
+    return NULL;
+}
+
+const void *eg_avatar_load(const char *url, int size)
+{
+    if (!url || !url[0]) return NULL;
+    for (int i = 0; i < avatars_n; i++)
+        if (avatars[i].size == size && strcmp(avatars[i].url, url) == 0) return avatars[i].failed ? NULL : &avatars[i].dsc;
+    if (avatars_n >= AVATAR_MAX) return NULL;
+    size_t len = 0;
+    void *png = eg_http_download(url, &len);
+    uint8_t *px = NULL;
+    if (png && len > 8 && memcmp(png, "\x89PNG", 4) == 0) {    /* old accounts may have a JPEG: keep the initial */
+        lvgl_port_lock(0);
+        px = decode_to(png, len, size, true);
+        lvgl_port_unlock();
+    }
+    heap_caps_free(png);
+    int i = avatars_n++;
+    snprintf(avatars[i].url, sizeof avatars[i].url, "%s", url);
+    avatars[i].size = size;
+    if (!px) { avatars[i].failed = true; return NULL; }
+    lv_image_dsc_t *d = &avatars[i].dsc;
+    memset(d, 0, sizeof *d);
+    d->header.magic = LV_IMAGE_HEADER_MAGIC;
+    d->header.cf = LV_COLOR_FORMAT_ARGB8888;
+    d->header.w = d->header.h = size;
+    d->header.stride = size * 4;
+    d->data = px;
+    d->data_size = size * size * 4;
+    return d;
 }

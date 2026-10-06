@@ -121,8 +121,8 @@ int main(int argc, char **argv)
             {4, "deltajuliet", 1240, true}, {5, "pawnstar", 1180, false}, {6, "rookie", 1010, false}}};
         eg_rank_set(eg_rank_create(lv_screen_active()), &r, NULL);
     } else if (strcmp(which, "you") == 0) {
-        static eg_home_t h = {.name = "deltajuliet", .elo = 1240, .wins = 20, .losses = 18, .draws = 4, .win_rate = 48};
-        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.13.1"), &h);
+        static eg_home_t h = {.name = "deltajuliet", .pfp = "x", .elo = 1240, .wins = 20, .losses = 18, .draws = 4, .win_rate = 48};
+        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.13.2"), &h);
         if (argc > 3) eg_test_pattern();
     } else if (strcmp(which, "ai") == 0) {
         eg_ai_setup_create(lv_screen_active(), NULL, NULL);
@@ -135,11 +135,12 @@ int main(int argc, char **argv)
         sample(&g);
         g.opp_ai = true; strcpy(g.opp_difficulty, "intermediate"); strcpy(g.opponent, "Stockfish");
         if (strncmp(which, "game-timed", 10) == 0) {
-            g.opp_ai = false; strcpy(g.opponent, "magnus_fan");
+            g.opp_ai = false; strcpy(g.opponent, "magnus_fan"); strcpy(g.opp_pfp, "x");
             g.timed = true; strcpy(g.time_control, "5+0"); g.your_turn = true;
             g.you_ms = strcmp(which, "game-timed-low") == 0 ? 18400 : 241500; g.opp_ms = 187000; g.running = 'y';
         }
         eg_game_set(scr, &g);
+        eg_game_set_you(scr, "deltajuliet", "x");
     }
 
     for (int i = 0; i < 5; i++) { lv_tick_inc(50); lv_timer_handler(); }

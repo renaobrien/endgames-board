@@ -49,6 +49,7 @@ typedef struct { char id[40]; char name[33]; int elo; } eg_incoming_t;   /* a di
 
 typedef struct {
     char name[33];
+    char pfp[160];              /* profile picture URL, "" when none */
     int elo;                    /* -1 before the first ranked game */
     int wins, losses, draws;    /* finished games */
     int win_rate;               /* percent, -1 when unranked */

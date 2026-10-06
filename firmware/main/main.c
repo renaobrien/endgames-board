@@ -438,7 +438,22 @@ static void apply_game(const eg_game_t *g)
     eg_game_set(scr_game, g);
     behind = scr_game;
     if (!wifi_open) lv_screen_load(scr_game);
+    bool need_pic = !g->opp_ai && g->opp_pfp[0] && !eg_avatar_find(g->opp_pfp, EG_GAME_AVATAR_PX);
     lvgl_port_unlock();
+    if (need_pic && eg_avatar_load(g->opp_pfp, EG_GAME_AVATAR_PX)) {     /* the board shows first, the picture follows */
+        lvgl_port_lock(0); eg_game_refresh_avatar(scr_game); lvgl_port_unlock();
+    }
+}
+
+/* Your picture for You: fetched once per URL. Network task. */
+static void load_you_pic(void)
+{
+    if (home.pfp[0] && !eg_avatar_find(home.pfp, EG_YOU_AVATAR_PX)) {
+        eg_avatar_load(home.pfp, EG_YOU_AVATAR_PX);
+        eg_avatar_load(home.pfp, EG_GAME_AVATAR_PX);
+        lvgl_port_lock(0); eg_you_set(scr_you, &home); lvgl_port_unlock();
+    }
+    lvgl_port_lock(0); eg_game_set_you(scr_game, home.name, home.pfp); lvgl_port_unlock();
 }
 
 static void handle_wifi(void);
@@ -815,7 +830,7 @@ static void net_task(void *arg)
                     if (r == EG_OK) { eg_home_set(scr_home, &home); eg_you_set(scr_you, &home); }
                     else if (r != EG_UNAUTHORIZED) eg_home_set_status(scr_home, "Couldn't load your games. Retrying...");
                     lvgl_port_unlock();
-                    if (r == EG_OK) check_waiting(&home);
+                    if (r == EG_OK) { check_waiting(&home); load_you_pic(); }
                     if (view == V_CHAL && r == EG_OK && chal_seen_n >= 0) {
                         /* someone accepted: open the game that wasn't there when the link was made */
                         for (int i = 0; i < home.n_games; i++) {

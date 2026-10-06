@@ -1631,7 +1631,7 @@ void eg_rank_set(lv_obj_t *screen, const eg_rank_t *d, const char *error)
 
 typedef struct {
     void (*forget)(void);
-    lv_obj_t *avatar, *initial, *name, *elo, *st[4], *out_lbl, *out_note;
+    lv_obj_t *avatar, *avatar_img, *initial, *name, *elo, *st[4], *out_lbl, *out_note;
     lv_obj_t *qr_panel, *qr_title, *qr, *qr_url, *qr_note;
     uint32_t armed, ver_taps, ver_tap_at;
 } you_t;
@@ -1758,6 +1758,9 @@ lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *v
     lv_obj_set_style_pad_all(y->avatar, 0, 0);
     y->initial = label(y->avatar, &eg_bungee_44, EG_FG, "");
     lv_obj_center(y->initial);
+    y->avatar_img = lv_image_create(y->avatar);
+    lv_obj_center(y->avatar_img);
+    lv_obj_add_flag(y->avatar_img, LV_OBJ_FLAG_HIDDEN);
     y->name = label(s, &eg_bungee_28, EG_PINK, "");
     lv_label_set_long_mode(y->name, LV_LABEL_LONG_DOT);
     lv_obj_set_width(y->name, 380);
@@ -1826,6 +1829,15 @@ void eg_you_set(lv_obj_t *screen, const eg_home_t *h)
     const char *nm = h->name[0] ? h->name : "Player";
     char ini[2] = {(char)((nm[0] >= 'a' && nm[0] <= 'z') ? nm[0] - 32 : nm[0]), 0};
     lv_label_set_text(y->initial, ini);
+    const void *pic = eg_avatar_find(h->pfp, EG_YOU_AVATAR_PX);
+    if (pic) {
+        lv_image_set_src(y->avatar_img, pic);
+        lv_obj_remove_flag(y->avatar_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(y->initial, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(y->avatar_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(y->initial, LV_OBJ_FLAG_HIDDEN);
+    }
     lv_label_set_text(y->name, nm);
     if (h->elo >= 0 && h->win_rate >= 0) lv_label_set_text_fmt(y->elo, "Rating %d  ·  %d%% won", h->elo, h->win_rate);
     else if (h->elo >= 0) lv_label_set_text_fmt(y->elo, "Rating %d", h->elo);

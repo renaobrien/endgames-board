@@ -124,6 +124,7 @@ static bool parse_game(const cJSON *game, eg_game_t *g)
     copy_str(g->opponent, sizeof g->opponent, cJSON_GetObjectItem(opp, "name"));
     g->opp_ai = cJSON_IsTrue(cJSON_GetObjectItem(opp, "isAi"));
     copy_str(g->opp_difficulty, sizeof g->opp_difficulty, cJSON_GetObjectItem(opp, "difficulty"));
+    copy_str(g->opp_pfp, sizeof g->opp_pfp, cJSON_GetObjectItem(opp, "pfpUrl"));
     copy_str(g->time_control, sizeof g->time_control, cJSON_GetObjectItem(game, "timeControl"));
     const cJSON *clk = cJSON_GetObjectItem(game, "clock");
     if (g->time_control[0] && cJSON_IsObject(clk)) {
@@ -282,6 +283,7 @@ eg_result_t eg_api_home(const char *token, eg_home_t *out)
         cJSON *j = cJSON_Parse(body);
         const cJSON *prof = cJSON_GetObjectItem(j, "profile");
         copy_str(out->name, sizeof out->name, cJSON_GetObjectItem(prof, "name"));
+        copy_str(out->pfp, sizeof out->pfp, cJSON_GetObjectItem(prof, "pfpUrl"));
         const cJSON *elo = cJSON_GetObjectItem(prof, "elo");
         if (cJSON_IsNumber(elo) && cJSON_IsTrue(cJSON_GetObjectItem(prof, "ranked"))) out->elo = elo->valueint;
         const cJSON *w = cJSON_GetObjectItem(prof, "wins"), *l = cJSON_GetObjectItem(prof, "losses"), *d = cJSON_GetObjectItem(prof, "draws");

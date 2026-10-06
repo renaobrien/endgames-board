@@ -11,3 +11,7 @@ bool eg_pieces_load(const char *token, bool *changed);
 const void *eg_thumb_load(const char *url);
 const void *eg_thumb_find(const char *url);
 bool eg_thumb_failed(const char *url);     /* empty URL, or a download that failed: the set's images are gone */
+
+/* Profile pictures, round, size x size. load downloads (network task); find never does (UI task). */
+const void *eg_avatar_load(const char *url, int size);
+const void *eg_avatar_find(const char *url, int size);

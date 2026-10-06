@@ -8,6 +8,7 @@
 #include "pieces.h"
 #include "theme.h"
 #include "ui_screens.h"
+#include "pieces_store.h"
 #include <ctype.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,7 +31,8 @@ typedef struct {
     /* Everything per-square is indexed by screen cell (row*8+col). */
     lv_obj_t *cells[64], *tint[64], *piece[64], *mark[64];
     lv_obj_t *avatar, *avatar_txt, *opp_name, *opp_sub, *opp_caps, *you_caps, *status, *last, *you_card;
-    lv_obj_t *btn_back, *btn_menu, *you_name, *you_sub;
+    lv_obj_t *btn_back, *btn_menu, *you_name, *you_sub, *opp_img, *you_img, *you_txt;
+    char you_pfp[160];
     lv_obj_t *promo, *menu, *drawer_list;
     bool sent;               /* our move is on its way; board already shows it */
     /* clocks (timed games) */
@@ -357,6 +359,39 @@ static void set_status(ui_t *u)
     lv_obj_set_style_text_color(u->status, col, 0);
 }
 
+static void paint_avatar(ui_t *u)
+{
+    const void *pic = u->g.opp_ai ? NULL : eg_avatar_find(u->g.opp_pfp, EG_GAME_AVATAR_PX);
+    if (pic) {
+        lv_image_set_src(u->opp_img, pic);
+        lv_obj_remove_flag(u->opp_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(u->avatar_txt, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(u->opp_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(u->avatar_txt, LV_OBJ_FLAG_HIDDEN);
+    }
+    const void *mine = eg_avatar_find(u->you_pfp, EG_GAME_AVATAR_PX);
+    if (mine) {
+        lv_image_set_src(u->you_img, mine);
+        lv_obj_remove_flag(u->you_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_add_flag(u->you_txt, LV_OBJ_FLAG_HIDDEN);
+    } else {
+        lv_obj_add_flag(u->you_img, LV_OBJ_FLAG_HIDDEN);
+        lv_obj_remove_flag(u->you_txt, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+void eg_game_refresh_avatar(lv_obj_t *screen) { paint_avatar(U(screen)); }
+
+void eg_game_set_you(lv_obj_t *screen, const char *name, const char *pfp)
+{
+    ui_t *u = U(screen);
+    snprintf(u->you_pfp, sizeof u->you_pfp, "%s", pfp ? pfp : "");
+    char ini[2] = {(char)((name && name[0] >= 'a' && name[0] <= 'z') ? name[0] - 32 : (name && name[0] ? name[0] : 'Y')), 0};
+    lv_label_set_text(u->you_txt, ini);
+    paint_avatar(u);
+}
+
 static void redraw_panel(ui_t *u)
 {
     /* Opponent: a round avatar with their initial (their picture once the API sends it). Tap it for the name. */
@@ -365,6 +400,7 @@ static void redraw_panel(ui_t *u)
     lv_label_set_text(u->avatar_txt, u->g.opp_ai ? "AI" : initial);
     lv_obj_set_style_border_color(u->avatar, u->g.opp_ai ? EG_CYAN : EG_PINK, 0);
     lv_label_set_text(u->opp_name, nm);
+    paint_avatar(u);
     if (u->g.opp_ai) lv_label_set_text_fmt(u->opp_sub, "Computer, %s", eg_difficulty_label(u->g.opp_difficulty[0] ? u->g.opp_difficulty : "intermediate"));
     else lv_label_set_text(u->opp_sub, "Player");
     lv_label_set_text(u->you_sub, u->g.you_white ? "Playing white" : "Playing black");
@@ -706,6 +742,9 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
     lv_obj_add_event_cb(u->btn_menu, menu_cb, LV_EVENT_CLICKED, scr);
 
     lv_obj_t *opp_sub_card = mk_card(pn, 64, &u->avatar, &u->avatar_txt, &u->opp_name, &u->opp_sub);
+    u->opp_img = lv_image_create(u->avatar);
+    lv_obj_center(u->opp_img);
+    lv_obj_add_flag(u->opp_img, LV_OBJ_FLAG_HIDDEN);
     u->clk_opp = mk_clock(opp_sub_card, RAIL_W - 90, 12);
     u->opp_caps = lv_obj_create(pn);
     plain(u->opp_caps);
@@ -738,6 +777,10 @@ lv_obj_t *eg_game_create(lv_obj_t *parent, const eg_game_cb_t *cb)
     lv_obj_t *you_av, *you_txt, *you_sub;
     u->you_card = mk_card(pn, 404, &you_av, &you_txt, &u->you_name, &you_sub);
     lv_label_set_text(you_txt, "Y");
+    u->you_txt = you_txt;
+    u->you_img = lv_image_create(you_av);
+    lv_obj_center(u->you_img);
+    lv_obj_add_flag(u->you_img, LV_OBJ_FLAG_HIDDEN);
     lv_obj_set_style_border_color(you_av, EG_YELLOW, 0);
     lv_label_set_text(u->you_name, "You");
     lv_label_set_text(you_sub, "");
