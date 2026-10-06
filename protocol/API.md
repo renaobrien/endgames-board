@@ -232,7 +232,7 @@ Accept returns `200 { "apiVersion": 1, "game": { ... } }` in the `board-game` sh
 
 ### Quick match: `POST` and `GET /board-quick-match`
 
-Pairs you with the next waiting player. Quick match games are timed: `10+0` unless you send `"timeControl"` (`3+2`, `5+0`, `10+0`, `15+10`) with `join`. You are only paired with a player who asked for the same control.
+Pairs you with the next waiting player. Quick match games are timed (`10+0`) unless you send `"timeControl"` with `join`: a preset (`3+2`, `5+0`, `10+0`, `15+10`), or `null` (or the string `"untimed"`) for an untimed game. Leaving the field out means `10+0`. You are only paired with a player who asked for the same control, so untimed players are paired with untimed players. Anything else is rejected with `400`.
 
 ```json
 POST { "action": "join" }    or    { "action": "cancel" }

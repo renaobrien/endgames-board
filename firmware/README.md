@@ -2,7 +2,7 @@
 
 Runs on the Elecrow CrowPanel Advanced 5" ESP32-P4 (800x480, GT911 touch). ESP-IDF + LVGL 9. Wi-Fi comes through the onboard ESP32-C6 (ESP-Hosted).
 
-**Status:** compiles for the ESP32-P4 with ESP-IDF v5.5.1 (verified 2026-10-04). `main/bsp.c` brings up the screen, touch, backlight and Wi-Fi using the pins and timings from Elecrow's published sources for this board. Runs on the real board; over-the-air releases 0.8.0 to 0.10.1 have shipped and one board is paired.
+**Status:** compiles for the ESP32-P4 with ESP-IDF v5.5.1 (verified 2026-10-04). `main/bsp.c` brings up the screen, touch, backlight and Wi-Fi using the pins and timings from Elecrow's published sources for this board. Runs on the real board; over-the-air releases 0.8.0 to 0.12.0 have shipped and two consoles are paired.
 
 ## Known issue: Wi-Fi chip startup on early P4 boards
 
