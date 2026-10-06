@@ -1631,7 +1631,7 @@ void eg_rank_set(lv_obj_t *screen, const eg_rank_t *d, const char *error)
 
 typedef struct {
     void (*forget)(void);
-    lv_obj_t *avatar, *initial, *name, *elo, *st_games, *st_rec, *st_rate, *out_lbl, *out_note;
+    lv_obj_t *avatar, *initial, *name, *elo, *st[4], *out_lbl, *out_note;
     lv_obj_t *qr_panel, *qr_title, *qr, *qr_url, *qr_note;
     uint32_t armed, ver_taps, ver_tap_at;
 } you_t;
@@ -1711,19 +1711,22 @@ static void you_ver_cb(lv_event_t *e)
     if (y->ver_taps >= 5) { y->ver_taps = 0; eg_test_pattern(); }
 }
 
+/* One stat: the number big and centered, its name centered under it. */
+#define STAT_W 113
 static lv_obj_t *stat_tile(lv_obj_t *s, int x, const char *caption, lv_color_t c, lv_obj_t **value)
 {
     lv_obj_t *t = lv_obj_create(s);
     lv_obj_remove_flag(t, LV_OBJ_FLAG_SCROLLABLE);
-    lv_obj_set_size(t, 148, 96);
+    lv_obj_set_size(t, STAT_W, 104);
     lv_obj_set_pos(t, x, 172);
     lv_obj_set_style_bg_color(t, EG_SURFACE, 0);
     lv_obj_set_style_border_width(t, 0, 0);
     lv_obj_set_style_radius(t, 14, 0);
-    lv_obj_set_style_pad_all(t, 10, 0);
-    lv_obj_set_pos(label(t, &eg_sora_16, EG_FG_HAZE, caption), 0, 0);
-    *value = label(t, &eg_vt323_36, c, "-");
-    lv_obj_set_pos(*value, 0, 30);
+    lv_obj_set_style_pad_all(t, 0, 0);
+    *value = label(t, &eg_vt323_56, c, "-");
+    lv_obj_align(*value, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_t *cap = label(t, &eg_sora_16, EG_FG_HAZE, caption);
+    lv_obj_align(cap, LV_ALIGN_BOTTOM_MID, 0, -12);
     return t;
 }
 
@@ -1763,9 +1766,9 @@ lv_obj_t *eg_you_create(lv_obj_t *parent, void (*on_forget)(void), const char *v
     lv_obj_set_pos(y->elo, 124, 116);
 
     /* record */
-    stat_tile(s, 24, "Games", EG_CYAN, &y->st_games);
-    stat_tile(s, 184, "Won, lost, drawn", EG_FG, &y->st_rec);
-    stat_tile(s, 344, "Win rate", EG_MINT, &y->st_rate);
+    static const char *caps[4] = {"Played", "Won", "Lost", "Drawn"};
+    const lv_color_t cols[4] = {EG_CYAN, EG_MINT, EG_PINK_SOFT, EG_FG_HAZE};
+    for (int i = 0; i < 4; i++) stat_tile(s, 24 + i * (STAT_W + 12), caps[i], cols[i], &y->st[i]);
 
     lv_obj_t *v = label(s, &eg_sora_16, EG_FG_MIST, "");
     lv_label_set_text_fmt(v, "Firmware %s, updates itself", version);
@@ -1824,13 +1827,14 @@ void eg_you_set(lv_obj_t *screen, const eg_home_t *h)
     char ini[2] = {(char)((nm[0] >= 'a' && nm[0] <= 'z') ? nm[0] - 32 : nm[0]), 0};
     lv_label_set_text(y->initial, ini);
     lv_label_set_text(y->name, nm);
-    if (h->elo >= 0) lv_label_set_text_fmt(y->elo, "Rating %d", h->elo);
+    if (h->elo >= 0 && h->win_rate >= 0) lv_label_set_text_fmt(y->elo, "Rating %d  ·  %d%% won", h->elo, h->win_rate);
+    else if (h->elo >= 0) lv_label_set_text_fmt(y->elo, "Rating %d", h->elo);
     else lv_label_set_text(y->elo, "Unranked until your first finished game");
-    int games = h->wins + h->losses + h->draws;
-    lv_label_set_text_fmt(y->st_games, "%d", games);
-    lv_label_set_text_fmt(y->st_rec, "%d-%d-%d", h->wins, h->losses, h->draws);
-    if (h->win_rate >= 0) lv_label_set_text_fmt(y->st_rate, "%d%%", h->win_rate);
-    else lv_label_set_text(y->st_rate, "-");
+    const int v[4] = {h->wins + h->losses + h->draws, h->wins, h->losses, h->draws};
+    for (int i = 0; i < 4; i++) {
+        lv_label_set_text_fmt(y->st[i], "%d", v[i]);
+        lv_obj_align(y->st[i], LV_ALIGN_TOP_MID, 0, 8);      /* re-center for the new width */
+    }
     y->armed = 0;
     lv_label_set_text(y->out_lbl, "Sign out");
     lv_obj_add_flag(y->out_note, LV_OBJ_FLAG_HIDDEN);

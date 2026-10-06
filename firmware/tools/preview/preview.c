@@ -122,7 +122,7 @@ int main(int argc, char **argv)
         eg_rank_set(eg_rank_create(lv_screen_active()), &r, NULL);
     } else if (strcmp(which, "you") == 0) {
         static eg_home_t h = {.name = "deltajuliet", .elo = 1240, .wins = 20, .losses = 18, .draws = 4, .win_rate = 48};
-        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.13.0"), &h);
+        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.13.1"), &h);
         if (argc > 3) eg_test_pattern();
     } else if (strcmp(which, "ai") == 0) {
         eg_ai_setup_create(lv_screen_active(), NULL, NULL);
