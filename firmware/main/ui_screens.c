@@ -1310,9 +1310,9 @@ void eg_find_set_status(lv_obj_t *screen, const char *msg, bool sent)
     else lv_obj_remove_flag(f->send, LV_OBJ_FLAG_HIDDEN);
 }
 
-/* Edit (rename / delete) needs POST /board-set-edit on the server. Turn on once it's live. */
+/* Edit (rename / delete) through POST /board-set-edit (live since 2026-10-06). */
 #ifndef EG_SET_EDIT
-#define EG_SET_EDIT 0
+#define EG_SET_EDIT 1
 #endif
 
 /* ---------- Sets tab (pick Default or one of yours; making a new one opens the QR screen) ---------- */
@@ -1502,7 +1502,7 @@ static void set_tile(sets_t *t, const eg_set_t *st, const char *name, bool activ
     if (k) { lv_obj_t *im = lv_image_create(tile); lv_image_set_src(im, k); lv_obj_align(im, LV_ALIGN_LEFT_MID, 6, 0); }
     if (n) { lv_obj_t *im = lv_image_create(tile); lv_image_set_src(im, n); lv_obj_align(im, LV_ALIGN_RIGHT_MID, -6, 0); }
     if (!k && !n) {                          /* not downloaded yet, or the set's images are gone */
-        bool dead = !st->preview_k[0] || eg_thumb_failed(st->preview_k);
+        bool dead = st->missing || !st->preview_k[0] || eg_thumb_failed(st->preview_k);
         lv_obj_t *w = label(tile, &eg_sora_16, eg_on(EG_BOARD_LIGHT), dead ? "Pieces\nmissing" : "Loading...");
         lv_obj_set_style_text_align(w, LV_TEXT_ALIGN_CENTER, 0);
         lv_obj_center(w);
@@ -1519,6 +1519,14 @@ static void set_tile(sets_t *t, const eg_set_t *st, const char *name, bool activ
         lv_obj_set_style_text_font(lv_obj_get_child(ed, 0), &eg_sora_16, 0);
         lv_obj_set_user_data(ed, t);
         lv_obj_add_event_cb(ed, sets_edit_open_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
+    }
+    if (st->missing) {                       /* can't be played with; Edit still renames or deletes it */
+        lv_obj_set_style_border_width(b, 2, 0);
+        lv_obj_set_style_border_color(b, EG_SURFACE, 0);
+        lv_obj_set_style_bg_opa(b, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_opa(b, LV_OPA_COVER, 0);
+        lv_obj_set_style_text_opa(l, LV_OPA_60, 0);
+        return;
     }
     lv_obj_add_event_cb(b, sets_pick_cb, LV_EVENT_CLICKED, (void *)(intptr_t)i);
 }

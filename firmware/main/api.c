@@ -329,6 +329,7 @@ eg_result_t eg_api_home(const char *token, eg_home_t *out)
             const cJSON *pv = cJSON_GetObjectItem(st2, "preview");
             copy_str(e->preview_k, sizeof e->preview_k, cJSON_GetObjectItem(pv, "wk"));
             copy_str(e->preview_n, sizeof e->preview_n, cJSON_GetObjectItem(pv, "wn"));
+            e->missing = cJSON_IsTrue(cJSON_GetObjectItem(st2, "missing"));
             if (e->id[0]) out->n_sets++;
         }
         r = EG_OK;
@@ -391,7 +392,7 @@ eg_result_t eg_api_set(const char *token, const char *set_id)
     char *body = NULL;
     int st = request(HTTP_METHOD_POST, "board-set", token, req, &body);
     heap_caps_free(body);
-    return st == 200 ? EG_OK : st == 401 ? EG_UNAUTHORIZED : EG_ERROR;
+    return st == 200 ? EG_OK : st == 401 ? EG_UNAUTHORIZED : st == 409 ? EG_CONFLICT : EG_ERROR;   /* 409: pieces missing */
 }
 
 eg_result_t eg_api_leaderboard(const char *token, eg_rank_t *out)

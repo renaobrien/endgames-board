@@ -760,6 +760,8 @@ static void net_task(void *arg)
                     snprintf(home.active_set, sizeof home.active_set, "%s", req.set_id);
                     eg_pieces_load(token, &changed);      /* new set's pieces for every board */
                     req.thumbs = true;                    /* redraw Sets with the new pick marked */
+                } else if (r == EG_CONFLICT) {
+                    req.sets = true;                      /* its pieces are gone: fresh list shows it as missing */
                 }
             }
             if (req.rank) {
@@ -794,6 +796,7 @@ static void net_task(void *arg)
                 lvgl_port_lock(0); eg_sets_set(scr_sets, &home); lvgl_port_unlock();   /* names first */
                 int fresh = 0;
                 for (int i = 0; i < home.n_sets; i++) {
+                    if (home.sets[i].missing) continue;
                     if (!eg_thumb_find(home.sets[i].preview_k) && eg_thumb_load(home.sets[i].preview_k)) fresh++;
                     if (!eg_thumb_find(home.sets[i].preview_n) && eg_thumb_load(home.sets[i].preview_n)) fresh++;
                     if (fresh >= 4) { fresh = 0; lvgl_port_lock(0); eg_sets_set(scr_sets, &home); lvgl_port_unlock(); }

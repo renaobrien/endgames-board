@@ -42,7 +42,7 @@ typedef struct {
     int move_count;
 } eg_home_game_t;
 
-typedef struct { char id[48]; char name[33]; char preview_k[160], preview_n[160]; } eg_set_t;   /* preview: white king and knight PNGs */
+typedef struct { char id[48]; char name[33]; char preview_k[160], preview_n[160]; bool missing; } eg_set_t;   /* preview: white king and knight PNGs; missing: its images no longer load */
 
 #define EG_HOME_MAX_INCOMING 10
 typedef struct { char id[40]; char name[33]; int elo; } eg_incoming_t;   /* a direct challenge waiting for your answer */
@@ -72,9 +72,9 @@ eg_result_t eg_api_new_ai(const char *token, const char *difficulty, const char 
 eg_result_t eg_api_new_challenge(const char *token, const char *color, char url[160]);
 /* POST /board-resign */
 eg_result_t eg_api_resign(const char *token, const char *game_id, eg_game_t *out);
-/* POST /board-set */
+/* POST /board-set. EG_CONFLICT: that set's pieces are missing. */
 eg_result_t eg_api_set(const char *token, const char *set_id);
-/* POST /board-set-edit. name != NULL renames the set; name == NULL deletes it (hidden, restorable on the web).
+/* POST /board-set-edit. name != NULL renames the set; name == NULL deletes it (gone for the player; the website has no restore).
  * EG_CONFLICT: the set is gone or isn't yours. The default set can't be edited. */
 eg_result_t eg_api_set_edit(const char *token, const char *set_id, const char *name);
 

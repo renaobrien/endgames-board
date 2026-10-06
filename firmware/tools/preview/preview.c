@@ -88,6 +88,7 @@ int main(int argc, char **argv)
             .sets = {{"default", "Default"}, {"s1", "Vaporwave Rena"}, {"s2", "Jon Bo"}}};
         for (int i = 0; i < 3; i++) { strcpy(h.sets[i].preview_k, "wk"); strcpy(h.sets[i].preview_n, "wn"); }
         strcpy(h.sets[2].preview_k, "x"); strcpy(h.sets[2].preview_n, "x");   /* a set whose images are gone */
+        h.sets[2].missing = true;
         if (strcmp(which, "sets-empty") == 0) { h.n_sets = 1; strcpy(h.active_set, "default"); }
         if (strncmp(which, "sets", 4) == 0) {
             lv_obj_t *ss = eg_sets_create(lv_screen_active(), NULL, NULL);
@@ -124,7 +125,7 @@ int main(int argc, char **argv)
         eg_rank_set(eg_rank_create(lv_screen_active()), &r, NULL);
     } else if (strcmp(which, "you") == 0) {
         static eg_home_t h = {.name = "deltajuliet", .pfp = "x", .elo = 1240, .wins = 20, .losses = 18, .draws = 4, .win_rate = 48};
-        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.14.0"), &h);
+        eg_you_set(eg_you_create(lv_screen_active(), NULL, "0.14.1"), &h);
         if (argc > 3) eg_test_pattern();
     } else if (strcmp(which, "ai") == 0) {
         eg_ai_setup_create(lv_screen_active(), NULL, NULL);
