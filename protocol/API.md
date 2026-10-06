@@ -162,14 +162,14 @@ One call for the home screen.
   ],
   "incomingChallenges": [ { "id": "uuid", "from": { "name": "queenbee", "elo": 1820, "pfpUrl": "https://.../avatar.png" } } ],
   "activeSetId": "uuid-or-default",
-  "sets": [ { "id": "uuid-or-default", "name": "Default", "kind": "default",
+  "sets": [ { "id": "uuid-or-default", "name": "Default", "kind": "default", "missing": false,
               "preview": { "wk": "https://.../wk.png", "wn": "https://.../wn.png" } } ]
 }
 ```
 
 In timed games the list items carry `timeControl`, `yourMs`, `opponentMs` and `running` (same meaning as `clock` in `board-game`); they are `null` in untimed games.
 
-`games` holds your in-progress games (against people and the computer), your-turn first, then most recently updated, up to 20. You can have at most 20 in progress; `board-new-game` returns `429` above that. `incomingChallenges` lists direct challenges waiting for your answer (see `board-challenge-respond`). `sets` lists the built-in set plus sets you made. `elo` is `null` and `ranked` false before the first ranked game.
+`games` holds your in-progress games (against people and the computer), your-turn first, then most recently updated, up to 20. You can have at most 20 in progress; `board-new-game` returns `429` above that. `incomingChallenges` lists direct challenges waiting for your answer (see `board-challenge-respond`). `sets` lists the built-in set plus sets you made. A set with `"missing": true` has pieces that no longer load (the images were saved with a link that expired): its `preview` is `null`, show "Pieces missing", and don't offer it as a choice (`board-set` answers `409` for it). It can still be renamed or deleted. `activeSetId` is never a missing set: if the active set's pieces are gone it reads `"default"`. Treat a missing `missing` field as `false`. `elo` is `null` and `ranked` false before the first ranked game.
 
 `profile.wins`, `losses` and `draws` count your finished games. `winRate` is wins over all finished games as a whole percent (the number the website's You screen shows), and `null` before your first finished game, when the three counts are `0`. Older servers leave all four out: treat a missing field as no stats.
 
@@ -217,7 +217,7 @@ Challenge a specific player (find them with `board-users`):
 
 ### Find a player: `GET /board-users?q=`
 
-Username search for "Challenge a player". `q` needs at least 2 characters (shorter returns an empty list).
+Username search for "Challenge a player". `q` needs at least 3 characters (shorter returns an empty list).
 
 ```json
 200 { "apiVersion": 1, "users": [ { "id": "uuid", "name": "queenbee", "elo": 1820 } ] }
@@ -289,7 +289,7 @@ Returns the finished `game`. Resigning a game that's already over returns `409`.
 { "setId": "uuid-or-default" }
 ```
 
-Sets your active set (the same one the website uses). `board-pieces` then returns it.
+Sets your active set (the same one the website uses). `board-pieces` then returns it. `404` if the set doesn't exist or is deleted; `409` `{ "error": "Pieces missing" }` if the set's pieces no longer load (see `missing` in `board-home`).
 
 ### Rename or delete a set: `POST /board-set-edit`
 
