@@ -143,7 +143,8 @@ One call for the home screen.
 ```json
 200 {
   "apiVersion": 1,
-  "profile": { "name": "deltajuliet", "pfpUrl": "https://.../avatar.png", "elo": 1240, "ranked": true },
+  "profile": { "name": "deltajuliet", "pfpUrl": "https://.../avatar.png", "elo": 1240, "ranked": true,
+               "wins": 31, "losses": 18, "draws": 3, "winRate": 60 },
   "games": [
     {
       "id": "uuid",
@@ -169,6 +170,8 @@ One call for the home screen.
 In timed games the list items carry `timeControl`, `yourMs`, `opponentMs` and `running` (same meaning as `clock` in `board-game`); they are `null` in untimed games.
 
 `games` holds your in-progress games (against people and the computer), your-turn first, then most recently updated, up to 20. You can have at most 20 in progress; `board-new-game` returns `429` above that. `incomingChallenges` lists direct challenges waiting for your answer (see `board-challenge-respond`). `sets` lists the built-in set plus sets you made. `elo` is `null` and `ranked` false before the first ranked game.
+
+`profile.wins`, `losses` and `draws` count your finished games. `winRate` is wins over all finished games as a whole percent (the number the website's You screen shows), and `null` before your first finished game, when the three counts are `0`. Older servers leave all four out: treat a missing field as no stats.
 
 `pfpUrl` is the player's profile picture: a public https link to a 256x256 PNG for pictures set on the website (Account, Profile picture). It is `null` when the player has not set one, and always `null` for the computer. Old accounts may hold a picture from another site (often a JPEG), so check the content type before decoding. Cache by URL: a new picture gets a new URL.
 
